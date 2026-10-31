@@ -92,6 +92,24 @@ final class StatusItemController: NSObject, NSWindowDelegate, NSDraggingDestinat
     var previewPopoverWindow: NSWindow? {
         popover.contentViewController?.view.window
     }
+
+    var statusWindow: NSWindow? {
+        statusItem?.button?.window
+    }
+
+    var pendingFiles: [URL] {
+        popoverModel.pendingFiles
+    }
+
+    var isPopoverShown: Bool {
+        popover.isShown
+    }
+
+    func uninstall() {
+        popover.close()
+        if let statusItem { NSStatusBar.system.removeStatusItem(statusItem) }
+        statusItem = nil
+    }
     #endif
 
     @objc private func togglePopover() {

@@ -385,3 +385,82 @@ private final class GestureRig {
     rig.monitor.startPolling()
     #expect(!rig.monitor.isPolling)
 }
+
+// MARK: - The menu bar icon
+
+/// Goes through the real status item's window, so AppKit's forwarding to the delegate is part of
+/// the test. Only the system's delivery of a real mouse drag to that window is not.
+private typealias DragQuery = @convention(c) (AnyObject, Selector, AnyObject) -> UInt
+private typealias DragCommand = @convention(c) (AnyObject, Selector, AnyObject) -> Bool
+
+@MainActor
+private func dragOperation(onto window: NSWindow, _ drag: FakeDrag) -> NSDragOperation {
+    let selector = #selector(NSDraggingDestination.draggingEntered(_:))
+    return NSDragOperation(rawValue: unsafeBitCast(window.method(for: selector), to: DragQuery.self)(window, selector, drag))
+}
+
+@MainActor
+private func perform(_ selector: Selector, on window: NSWindow, _ drag: FakeDrag) -> Bool {
+    unsafeBitCast(window.method(for: selector), to: DragCommand.self)(window, selector, drag)
+}
+
+/// A real icon in the menu bar. Set up as the app is, because a process with the default
+/// activation policy may not show the popover at all.
+@MainActor
+private func installedIcon() -> StatusItemController {
+    _ = NSApplication.shared
+    NSApp.setActivationPolicy(.accessory)
+    let settings = AppSettings(defaults: UserDefaults(suiteName: "MediaShiftTests-\(UUID().uuidString)")!)
+    let controller = StatusItemController(queue: JobQueue(settings: settings), settings: settings, openSettings: {})
+    controller.install()
+    RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+    return controller
+}
+
+@MainActor
+@Test func aDropOnTheMenuBarIconOffersWhatToDoWithTheFiles() throws {
+    let controller = installedIcon()
+    defer { controller.uninstall() }
+
+    let window = try #require(controller.statusWindow)
+    #expect(window.delegate === controller)
+    let entered = #selector(NSDraggingDestination.draggingEntered(_:))
+    let dropped = #selector(NSDraggingDestination.performDragOperation(_:))
+    #expect(window.responds(to: entered))
+    #expect(window.responds(to: dropped))
+
+    let files = [URL(fileURLWithPath: "/tmp/a.docx"), URL(fileURLWithPath: "/tmp/b.jpg")]
+    let pasteboard = NSPasteboard.withUniqueName()
+    defer { pasteboard.releaseGlobally() }
+    pasteboard.clearContents()
+    pasteboard.writeObjects(files as [NSURL])
+    let drag = FakeDrag(location: .zero, pasteboard: pasteboard)
+
+    #expect(dragOperation(onto: window, drag) == .copy)
+    #expect(controller.pendingFiles.isEmpty)
+    #expect(perform(dropped, on: window, drag))
+    #expect(controller.pendingFiles == files)
+    #expect(controller.isPopoverShown)
+
+    // The app that started the drag is still in front, and the list has to stay open anyway.
+    RunLoop.main.run(until: Date().addingTimeInterval(0.5))
+    #expect(controller.isPopoverShown)
+}
+
+@MainActor
+@Test func theMenuBarIconIgnoresDragsWithoutFiles() throws {
+    let controller = installedIcon()
+    defer { controller.uninstall() }
+
+    let window = try #require(controller.statusWindow)
+    let pasteboard = NSPasteboard.withUniqueName()
+    defer { pasteboard.releaseGlobally() }
+    pasteboard.clearContents()
+    pasteboard.setString("hello", forType: .string)
+    let drag = FakeDrag(location: .zero, pasteboard: pasteboard)
+
+    #expect(dragOperation(onto: window, drag) == [])
+    #expect(!perform(#selector(NSDraggingDestination.performDragOperation(_:)), on: window, drag))
+    #expect(controller.pendingFiles.isEmpty)
+    #expect(!controller.isPopoverShown)
+}
