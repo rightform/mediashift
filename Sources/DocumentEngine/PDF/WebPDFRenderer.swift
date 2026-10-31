@@ -3,25 +3,31 @@ import ConversionCore
 import Foundation
 import WebKit
 
-/// Lays out HTML with WebKit and prints it to a paginated A4 PDF, off screen.
+/// Lays out HTML with WebKit and prints it to a paginated PDF, off screen.
 /// Remote requests are blocked: conversion never touches the network.
 @MainActor
 public final class WebPDFRenderer: NSObject {
-    public static func render(html: String, baseURL: URL? = nil, to output: URL) async throws {
-        let renderer = WebPDFRenderer()
+    public static func render(html: String, baseURL: URL? = nil, paper: PaperSize = .a4, to output: URL) async throws {
+        let renderer = WebPDFRenderer(paper: paper)
         try await renderer.load { $0.loadHTMLString(html, baseURL: baseURL) }
         try await renderer.printPDF(to: output)
     }
 
     /// Prints a local HTML file, with access to the resources in its folder.
-    public static func render(file: URL, to output: URL) async throws {
-        let renderer = WebPDFRenderer()
+    public static func render(file: URL, paper: PaperSize = .a4, to output: URL) async throws {
+        let renderer = WebPDFRenderer(paper: paper)
         try await renderer.load { $0.loadFileURL(file, allowingReadAccessTo: file.deletingLastPathComponent()) }
         try await renderer.printPDF(to: output)
     }
 
-    private static let pageSize = NSSize(width: 595.28, height: 841.89)
     private static let margin: CGFloat = 56
+
+    private let pageSize: NSSize
+
+    private init(paper: PaperSize) {
+        pageSize = NSSize(width: paper.points.width, height: paper.points.height)
+        super.init()
+    }
 
     private var webView: WKWebView?
     private var window: NSWindow?
@@ -38,8 +44,8 @@ public final class WebPDFRenderer: NSObject {
         ) {
             configuration.userContentController.add(rules)
         }
-        let contentWidth = Self.pageSize.width - Self.margin * 2
-        let frame = NSRect(x: 0, y: 0, width: contentWidth, height: Self.pageSize.height)
+        let contentWidth = pageSize.width - Self.margin * 2
+        let frame = NSRect(x: 0, y: 0, width: contentWidth, height: pageSize.height)
         let view = WKWebView(frame: frame, configuration: configuration)
         view.navigationDelegate = self
         webView = view
@@ -58,7 +64,7 @@ public final class WebPDFRenderer: NSObject {
     private func printPDF(to output: URL) async throws {
         guard let webView, let window else { return }
         let info = NSPrintInfo()
-        info.paperSize = Self.pageSize
+        info.paperSize = pageSize
         info.topMargin = Self.margin
         info.bottomMargin = Self.margin
         info.leftMargin = Self.margin

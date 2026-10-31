@@ -8,10 +8,11 @@ public enum MediaConverter {
         _ input: URL,
         to output: URL,
         format: FileFormat,
+        options: MediaOptions = MediaOptions(),
         progress: ProgressHandler? = nil
     ) async throws {
         let job = try await MediaJob(input: input, output: output, progress: progress)
-        let lists = try MediaPlan.convert(job.info, to: format, capabilities: job.capabilities)
+        let lists = try MediaPlan.convert(job.info, to: format, capabilities: job.capabilities, options: options)
         try await StagedOutput.write(to: output, replacing: input) { staged in
             try await job.encode(lists, to: staged)
         }
@@ -21,11 +22,13 @@ public enum MediaConverter {
     /// Re-encodes to a smaller file in the container named by `output`, or the input's own.
     /// With `targetBytes` the result lands at or under that size. When nothing smaller than the
     /// source can be made, `output` becomes a copy of the source.
+    /// Of `options`, the video codec and the largest resolution apply here.
     public static func compress(
         _ input: URL,
         to output: URL,
         level: CompressionLevel,
         targetBytes: Int64? = nil,
+        options: MediaOptions = MediaOptions(),
         progress: ProgressHandler? = nil
     ) async throws {
         if let targetBytes, targetBytes <= 0 {
@@ -43,7 +46,7 @@ public enum MediaConverter {
             var smaller = false
             if !alreadyFits {
                 smaller = try await job.compress(
-                    into: staged, format: format, level: level, targetBytes: targetBytes, sourceSize: sourceSize
+                    into: staged, format: format, level: level, targetBytes: targetBytes, sourceSize: sourceSize, options: options
                 )
             }
             if !smaller {

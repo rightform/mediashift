@@ -145,7 +145,8 @@ private struct ActionChooser: View {
     let choose: (ConversionAction) -> Void
     let cancel: () -> Void
 
-    private let columns = [GridItem(.adaptive(minimum: 76), spacing: 8)]
+    /// Three to a row leaves every label the room it needs, the longest included.
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: 3)
 
     private var actions: [ConversionAction] {
         ConversionCatalog.actions(for: urls)
@@ -238,14 +239,16 @@ private struct JobRow: View {
             Text(note ?? output.lastPathComponent)
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
-                .lineLimit(1)
+                .lineLimit(note == nil ? 1 : 2)
                 .truncationMode(.middle)
+                .fixedSize(horizontal: false, vertical: true)
                 .help(note ?? output.path)
         case .failed(let message):
             Text(message)
                 .font(.system(size: 11))
                 .foregroundStyle(.red)
-                .lineLimit(2)
+                .lineLimit(4)
+                .fixedSize(horizontal: false, vertical: true)
                 .help(message)
         case .cancelled:
             Text("Cancelled")

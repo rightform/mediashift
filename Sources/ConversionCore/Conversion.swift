@@ -45,6 +45,14 @@ public enum OutputNaming {
         unusedURL(for: input, fileExtension: input.pathExtension, suffix: suffix, directory: directory, fileManager: fileManager)
     }
 
+    /// Turns what someone typed into a safe part of a file name. Nil when nothing usable is left.
+    public static func cleanSuffix(_ raw: String) -> String? {
+        let unsafe = CharacterSet(charactersIn: "/:\\").union(.controlCharacters)
+        let kept = raw.unicodeScalars.filter { !unsafe.contains($0) }
+        let text = String(String.UnicodeScalarView(kept)).trimmingCharacters(in: CharacterSet.whitespaces.union(CharacterSet(charactersIn: "-.")))
+        return text.isEmpty ? nil : String(text.prefix(40))
+    }
+
     private static func unusedURL(
         for input: URL,
         fileExtension: String,
@@ -66,11 +74,12 @@ public enum OutputNaming {
     /// A folder next to the input for results that are several files, such as one image per page.
     public static func outputFolder(
         for input: URL,
+        suffix: String? = nil,
         directory: URL? = nil,
         fileManager: FileManager = .default
     ) -> URL {
         let folder = directory ?? input.deletingLastPathComponent()
-        let base = input.deletingPathExtension().lastPathComponent
+        let base = input.deletingPathExtension().lastPathComponent + (suffix.map { "-\($0)" } ?? "")
         var candidate = folder.appendingPathComponent(base, isDirectory: true)
         var counter = 2
         while fileManager.fileExists(atPath: candidate.path) {

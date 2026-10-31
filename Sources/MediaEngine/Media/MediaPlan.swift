@@ -7,28 +7,38 @@ enum MediaPlan {
     static func convert(
         _ info: MediaInfo,
         to format: FileFormat,
-        capabilities: MediaCapabilities
+        capabilities: MediaCapabilities,
+        options: MediaOptions = MediaOptions()
     ) throws -> [[String]] {
+        let lists: [[String]]
         switch format.kind {
         case .video:
-            return try VideoPlan(info: info, format: format, capabilities: capabilities).attempts()
+            lists = try VideoPlan(info: info, format: format, capabilities: capabilities, options: options).attempts()
         case .audio:
-            return try AudioPlan(info: info, format: format, capabilities: capabilities, mode: .convert).attempts()
+            lists = try AudioPlan(info: info, format: format, capabilities: capabilities, mode: .convert, options: options).attempts()
         case .image where format == .gif:
-            return [try gif(info)]
+            lists = [try gif(info, options: options)]
         default:
             throw ConversionError("Converting video or audio to \(format.label) is not supported.")
         }
+        return options.removesMetadata ? lists.map { $0 + metadataRemoval } : lists
     }
 
-    /// Fifteen frames a second, at most 720 pixels wide, with a palette made for this clip.
-    static func gif(_ info: MediaInfo) throws -> [String] {
+    /// Leaves out the tags, chapters and encoder signatures a conversion would otherwise carry over.
+    static let metadataRemoval = [
+        "-map_metadata", "-1", "-map_chapters", "-1",
+        "-fflags", "+bitexact", "-flags:v", "+bitexact", "-flags:a", "+bitexact",
+    ]
+
+    /// By default fifteen frames a second, at most 720 pixels wide, with a palette made for this clip.
+    static func gif(_ info: MediaInfo, options: MediaOptions = MediaOptions()) throws -> [String] {
         guard let video = info.mainVideo else {
             throw ConversionError("This file has no video to turn into a GIF.")
         }
-        let rate = min(15, video.frameRate ?? 15)
+        let wanted = Double(options.gifFrameRate)
+        let rate = min(wanted, video.frameRate ?? wanted)
         let rateText = rate == rate.rounded() ? String(Int(rate)) : String(rate)
-        let filter = "fps=\(rateText),scale='min(720,iw)':-2:flags=lanczos,split[a][b];"
+        let filter = "fps=\(rateText),scale='min(\(options.gifWidth),iw)':-2:flags=lanczos,split[a][b];"
             + "[a]palettegen=stats_mode=diff[p];"
             + "[b][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle"
         return ["-map", "0:\(video.index)", "-an", "-sn", "-dn", "-vf", filter, "-loop", "0", "-f", "gif"]

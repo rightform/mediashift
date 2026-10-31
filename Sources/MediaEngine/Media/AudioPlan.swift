@@ -14,6 +14,7 @@ struct AudioPlan {
     var format: FileFormat
     var capabilities: MediaCapabilities
     var mode: Mode
+    var options = MediaOptions()
 
     private var lossless: Bool {
         [.wav, .aiff, .flac].contains(format)
@@ -63,7 +64,7 @@ struct AudioPlan {
     // MARK: Codecs
 
     private func codecArguments(for audio: MediaInfo.Stream) throws -> [String] {
-        if case .convert = mode, let copy = copyCodec, copy.contains(audio.codec) {
+        if case .convert = mode, let copy = copyCodec, copy.contains(audio.codec), fitsRequestedBitrate(audio) {
             return ["-c:a", "copy"]
         }
         switch format {
@@ -101,6 +102,13 @@ struct AudioPlan {
         }
     }
 
+    /// Copying a stream is the best outcome, unless it spends more than was asked for.
+    private func fitsRequestedBitrate(_ audio: MediaInfo.Stream) -> Bool {
+        guard let wanted = options.audioBitrate, !lossless else { return true }
+        guard let source = audio.bitrate else { return false }
+        return Double(source) <= Double(wanted) * 1.05
+    }
+
     private func lossy(
         _ encoder: String,
         audio: MediaInfo.Stream,
@@ -114,7 +122,9 @@ struct AudioPlan {
         var arguments = ["-c:a", encoder] + extra
         switch mode {
         case .convert:
-            if let quality {
+            if let wanted = options.audioBitrate {
+                arguments += ["-b:a", String(wanted)]
+            } else if let quality {
                 arguments += ["-q:a", quality]
             } else if let defaultRate {
                 arguments += ["-b:a", String(MediaBudget.scaledAudioBitrate(defaultRate, channels: audio.channels))]

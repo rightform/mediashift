@@ -29,7 +29,7 @@ Originals are never changed, and a new file never replaces an existing one.
 
 ## Using it
 
-- **The wheel:** hold Shift while dragging files from anywhere. Drop on a format, or back in the middle to cancel.
+- **The wheel:** hold Shift while dragging files from anywhere, or tap it at any moment during the drag. Drop on a format, or back in the middle to cancel.
 - **The menu bar:** drop files on the icon, or open it and choose files. Everything the wheel does is available there from the keyboard, along with progress and history.
 - **The command line:** the tool ships inside the app. To use it from anywhere, link it once:
 
@@ -55,23 +55,32 @@ mediashift talk.mov --compress strong
 mediashift photo.jpg --strip-metadata
 ```
 
+## Settings
+
+- **General:** open at login, how many conversions run at once, and what happens when they finish.
+- **Wheel:** the key that opens it (Shift, Control, Option or Command), haptic feedback, and which formats appear on it.
+- **Output:** where results go, what is added to their names, metadata removal, compression strength and a size limit.
+- **Images:** quality and largest size.
+- **Video & Audio:** codec, quality, largest resolution, GIF size and frame rate, and audio bitrate.
+- **Documents:** PDF page size, the resolution of pages turned into images, and text recognition for scans.
+
 ## Building
 
 Requires macOS 26 or later on Apple Silicon, with Xcode or just the Command Line Tools.
-
-```bash
-make test
-```
 
 ```bash
 make ffmpeg
 ```
 
 ```bash
+make test
+```
+
+```bash
 make app
 ```
 
-`make ffmpeg` builds the media engine from pinned, verified sources and is needed once. `make app` prints the location of the finished app.
+`make ffmpeg` builds the media engine from pinned, verified sources and is needed once. Without it, the tests that depend on it are skipped. `make app` prints the location of the finished app.
 
 ## How it is built
 

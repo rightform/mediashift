@@ -9,12 +9,13 @@ extension MediaJob {
         format: FileFormat,
         level: CompressionLevel,
         targetBytes: Int64?,
-        sourceSize: Int64
+        sourceSize: Int64,
+        options: MediaOptions = MediaOptions()
     ) async throws -> Bool {
         if format.kind == .audio {
             try await compressAudio(into: staged, format: format, level: level, targetBytes: targetBytes)
         } else {
-            try await compressVideo(into: staged, format: format, level: level, targetBytes: targetBytes)
+            try await compressVideo(into: staged, format: format, level: level, targetBytes: targetBytes, options: options)
         }
         return StagedOutput.fileSize(staged) < sourceSize
     }
@@ -25,14 +26,15 @@ extension MediaJob {
         into staged: URL,
         format: FileFormat,
         level: CompressionLevel,
-        targetBytes: Int64?
+        targetBytes: Int64?,
+        options: MediaOptions
     ) async throws {
         guard let video = info.mainVideo else {
             throw ConversionError("This file has no video to compress.")
         }
         func plan(videoBitrate: Int?, audioBitrate: Int) throws -> VideoPlan {
             let compression = VideoPlan.Compression(level: level, videoBitrate: videoBitrate, audioBitrate: audioBitrate)
-            return try VideoPlan(info: info, format: format, capabilities: capabilities, compression: compression)
+            return try VideoPlan(info: info, format: format, capabilities: capabilities, compression: compression, options: options)
         }
 
         guard let targetBytes else {

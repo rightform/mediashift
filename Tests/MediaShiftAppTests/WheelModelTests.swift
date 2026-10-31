@@ -48,18 +48,113 @@ private func model(actions count: Int) -> WheelModel {
     }
 }
 
+/// Every set of actions the wheel can really show, one per format, plus a few by count.
 @MainActor
-@Test func chipsNeverLeaveThePanelOrOverlapTheHub() {
-    for count in 1...12 {
-        let wheel = model(actions: count)
+private func everyRealWheel() -> [WheelModel] {
+    let byFormat = FileFormat.allCases.map { format in
+        WheelModel(urls: [URL(fileURLWithPath: "/a.\(format.fileExtension)")], actions: ConversionCatalog.actions(for: format))
+    }
+    return byFormat + (1...4).map { model(actions: $0) }
+}
+
+/// The shortest distance from the wheel's centre to a chip.
+private func distanceToCentre(_ frame: CGRect) -> CGFloat {
+    let x = max(frame.minX, min(0, frame.maxX))
+    let y = max(frame.minY, min(0, frame.maxY))
+    return hypot(x, y)
+}
+
+@MainActor
+@Test func chipsNeverLeaveThePanelOrTouchTheHubOrEachOther() {
+    for wheel in everyRealWheel() {
+        let name = wheel.urls[0].pathExtension
         let half = wheel.diameter / 2
-        #expect(wheel.ringRadius - WheelModel.chipSize.width / 2 >= WheelModel.hubRadius, "\(count) actions")
-        for index in 0..<wheel.actions.count {
-            let offset = wheel.offset(of: index)
-            #expect(abs(offset.width) + WheelModel.chipSize.width / 2 <= half)
-            #expect(abs(offset.height) + WheelModel.chipSize.height / 2 <= half)
+        let frames = wheel.actions.indices.map(wheel.chipFrame)
+        for (index, frame) in frames.enumerated() {
+            #expect(abs(frame.minX) <= half && abs(frame.maxX) <= half, "\(name) chip \(index)")
+            #expect(abs(frame.minY) <= half && abs(frame.maxY) <= half, "\(name) chip \(index)")
+            #expect(distanceToCentre(frame) > WheelModel.hubRadius, "\(name) chip \(index)")
+            for other in frames[(index + 1)...] {
+                #expect(!frame.intersects(other), "\(name) chip \(index)")
+            }
         }
     }
+}
+
+@MainActor
+@Test func neighbouringChipsKeepAGap() {
+    for wheel in everyRealWheel() where wheel.actions.count > 1 {
+        let frames = wheel.actions.indices.map(wheel.chipFrame)
+        for index in frames.indices {
+            let next = frames[(index + 1) % frames.count]
+            // A highlighted chip grows a little, and must still not touch the next one.
+            #expect(!frames[index].insetBy(dx: -4, dy: -4).intersects(next.insetBy(dx: -4, dy: -4)), "\(wheel.urls[0].pathExtension) chip \(index)")
+        }
+    }
+}
+
+@MainActor
+@Test func everyLabelFitsItsChip() {
+    let font = NSFont.systemFont(ofSize: WheelModel.chipFontSize, weight: .semibold)
+    var actions = FileFormat.allCases.map(ConversionAction.convert)
+    actions += [.compress, .stripMetadata]
+    for action in actions {
+        let text = (action.chipLabel as NSString).size(withAttributes: [.font: font]).width
+        let symbol: CGFloat = action.symbolName == nil ? 0 : 19
+        #expect(text + symbol + 16 <= WheelModel.chipWidth(for: action), "\(action.chipLabel)")
+    }
+}
+
+@MainActor
+@Test func aPointerOnAChipMeansThatChip() {
+    for wheel in everyRealWheel() {
+        for index in wheel.actions.indices {
+            let frame = wheel.chipFrame(of: index)
+            // Chip frames are y-down, the question is asked y-up. Corners are where a wide chip leaves its slice.
+            for corner in [CGPoint(x: frame.minX + 1, y: frame.minY + 1), CGPoint(x: frame.maxX - 1, y: frame.maxY - 1)] {
+                guard hypot(corner.x, corner.y) > WheelModel.hubRadius else { continue }
+                #expect(wheel.index(atOffset: CGPoint(x: corner.x, y: -corner.y)) == index, "\(wheel.urls[0].pathExtension) chip \(index)")
+            }
+        }
+    }
+}
+
+/// Lines of a string wrapped to the hub's text width.
+@MainActor
+private func lineCount(_ text: String, font: NSFont) -> Int {
+    let box = (text as NSString).boundingRect(
+        with: NSSize(width: WheelModel.hubTextWidth, height: 1000),
+        options: [.usesLineFragmentOrigin, .usesFontLeading],
+        attributes: [.font: font]
+    )
+    return Int((box.height / (font.ascender - font.descender + font.leading)).rounded())
+}
+
+@MainActor
+@Test func theHubsTextStaysInsideItsCircle() {
+    let titleFont = NSFont.systemFont(ofSize: 13, weight: .semibold)
+    let subtitleFont = NSFont.systemFont(ofSize: 11)
+
+    var wheels = everyRealWheel()
+    wheels.append(WheelModel(urls: [URL(fileURLWithPath: "/a.zip")], actions: []))
+    wheels.append(WheelModel(urls: (1...128).map { URL(fileURLWithPath: "/\($0).zip") }, actions: []))
+    wheels.append(WheelModel(urls: (1...128).map { URL(fileURLWithPath: "/\($0).jpg") }, actions: [.convert(.png)]))
+
+    for wheel in wheels {
+        for highlight in [nil] + wheel.actions.indices.map(Optional.some) {
+            wheel.highlighted = highlight
+            // The subtitle is the bottom line, kept to one so it cannot run past the curve.
+            #expect(lineCount(wheel.hubSubtitle, font: subtitleFont) == 1, "\(wheel.hubSubtitle)")
+            if highlight != nil {
+                #expect(lineCount(wheel.hubTitle, font: titleFont) <= 2, "\(wheel.hubTitle)")
+            }
+        }
+    }
+
+    // Icon, two lines of title, one of subtitle, and the gaps between them: the corners of that
+    // block have to be inside the circle.
+    let height = 32 + 2 + 2 * ceil(titleFont.ascender - titleFont.descender) + 2 + ceil(subtitleFont.ascender - subtitleFont.descender)
+    #expect(hypot(WheelModel.hubTextWidth / 2, height / 2) < WheelModel.hubRadius)
 }
 
 @MainActor
@@ -140,47 +235,153 @@ private final class FakeDrag: NSObject, NSDraggingInfo {
     #expect(wheel.highlighted == nil)
 }
 
+/// A monitor with a private pasteboard and a record of what it did.
 @MainActor
-@Test func theGestureNeedsTheModifierAndNewFiles() {
+private final class GestureRig {
     let pasteboard = NSPasteboard.withUniqueName()
-    defer { pasteboard.releaseGlobally() }
-    let settings = AppSettings()
-    settings.wheelEnabled = true
-    settings.modifier = .shift
+    let settings = AppSettings(defaults: UserDefaults(suiteName: "MediaShiftTests-\(UUID().uuidString)")!)
     var shown: [[URL]] = []
+    var locations: [NSPoint] = []
     var ended = 0
-    let monitor = DragMonitor(settings: settings, pasteboard: pasteboard) { urls, _ in shown.append(urls) } onDragEnded: { ended += 1 }
+    private(set) lazy var monitor = DragMonitor(settings: settings, pasteboard: pasteboard) { [unowned self] urls, location in
+        shown.append(urls)
+        locations.append(location)
+    } onDragEnded: { [unowned self] in
+        ended += 1
+    }
 
-    func beginDrag(_ url: URL) {
+    /// Made now, like in the app: it starts counting drags from the moment it exists.
+    init() {
+        _ = monitor
+    }
+
+    func beginDrag(_ url: URL = URL(fileURLWithPath: "/a.docx")) {
         pasteboard.clearContents()
         pasteboard.writeObjects([url as NSURL])
     }
 
-    // A drag without the modifier opens nothing.
-    beginDrag(URL(fileURLWithPath: "/a.docx"))
-    monitor.handleDrag(modifiers: [], location: .zero)
-    #expect(shown.isEmpty)
+    /// One look at the system's state. Nothing here needs the pointer to have moved.
+    func held(_ modifiers: NSEvent.ModifierFlags = [], at location: NSPoint = .zero) {
+        monitor.poll(DragInput(isButtonDown: true, modifiers: modifiers, location: location))
+    }
 
-    // Pressing it during the same drag does, once, however many mouse events follow.
-    monitor.handleDrag(modifiers: .shift, location: .zero)
-    monitor.handleDrag(modifiers: .shift, location: .zero)
-    #expect(shown.count == 1)
-    monitor.handleMouseUp()
-    #expect(ended == 1)
+    func released() {
+        monitor.poll(DragInput(isButtonDown: false, modifiers: [], location: .zero))
+    }
+}
+
+@MainActor
+@Test func theGestureNeedsTheModifierAndNewFiles() {
+    let rig = GestureRig()
+    defer { rig.pasteboard.releaseGlobally() }
+
+    // A drag without the modifier opens nothing.
+    rig.beginDrag()
+    rig.held()
+    #expect(rig.shown.isEmpty)
+
+    // Pressing it during the same drag does, once, however long it is held.
+    rig.held(.shift)
+    rig.held(.shift)
+    #expect(rig.shown.count == 1)
+    rig.released()
+    #expect(rig.ended == 1)
 
     // A later drag of something else must not reopen the wheel for the old files.
-    monitor.handleDrag(modifiers: .shift, location: .zero)
-    #expect(shown.count == 1)
+    rig.held(.shift)
+    #expect(rig.shown.count == 1)
 
-    beginDrag(URL(fileURLWithPath: "/b.docx"))
-    monitor.handleDrag(modifiers: .shift, location: .zero)
-    #expect(shown.count == 2)
-    #expect(shown[1].first?.lastPathComponent == "b.docx")
-    monitor.handleMouseUp()
+    rig.beginDrag(URL(fileURLWithPath: "/b.docx"))
+    rig.held(.shift)
+    #expect(rig.shown.count == 2)
+    #expect(rig.shown[1].first?.lastPathComponent == "b.docx")
+    rig.released()
 
     // Dragging text instead of files is none of the app's business.
-    pasteboard.clearContents()
-    pasteboard.setString("hello", forType: .string)
-    monitor.handleDrag(modifiers: .shift, location: .zero)
-    #expect(shown.count == 2)
+    rig.pasteboard.clearContents()
+    rig.pasteboard.setString("hello", forType: .string)
+    rig.held(.shift)
+    #expect(rig.shown.count == 2)
+}
+
+@MainActor
+@Test func theKeyWorksWhileThePointerRests() {
+    let rig = GestureRig()
+    defer { rig.pasteboard.releaseGlobally() }
+    let still = NSPoint(x: 300, y: 200)
+
+    rig.beginDrag()
+    rig.held(at: still)
+    rig.held(at: still)
+    #expect(rig.shown.isEmpty)
+
+    // The bug this guards against: a key press alone produces no mouse event.
+    rig.held(.shift, at: still)
+    #expect(rig.shown.count == 1)
+    #expect(rig.locations == [still])
+}
+
+@MainActor
+@Test func aQuickTapIsEnoughAndTheWheelStaysUntilRelease() {
+    let rig = GestureRig()
+    defer { rig.pasteboard.releaseGlobally() }
+
+    rig.beginDrag()
+    rig.held(.shift)
+    #expect(rig.shown.count == 1)
+
+    // The key is up again, and the file is still in hand.
+    rig.held()
+    rig.held()
+    #expect(rig.ended == 0)
+
+    rig.released()
+    #expect(rig.ended == 1)
+}
+
+@MainActor
+@Test func theKeyBeforeThePressWorksToo() {
+    let rig = GestureRig()
+    defer { rig.pasteboard.releaseGlobally() }
+
+    // Held from the start, before anything has been picked up.
+    rig.held(.shift)
+    #expect(rig.shown.isEmpty)
+    rig.beginDrag()
+    rig.held(.shift)
+    #expect(rig.shown.count == 1)
+}
+
+@MainActor
+@Test func otherModifiersAloneDoNotCount() {
+    let rig = GestureRig()
+    defer { rig.pasteboard.releaseGlobally() }
+    rig.settings.modifier = .command
+
+    rig.beginDrag()
+    rig.held(.shift)
+    #expect(rig.shown.isEmpty)
+    rig.held([.command, .shift])
+    #expect(rig.shown.count == 1)
+}
+
+@MainActor
+@Test func theWheelCanBeSwitchedOff() {
+    let rig = GestureRig()
+    defer { rig.pasteboard.releaseGlobally() }
+    rig.settings.wheelEnabled = false
+
+    rig.beginDrag()
+    rig.held(.shift)
+    #expect(rig.shown.isEmpty)
+}
+
+@MainActor
+@Test func pollingEndsAsSoonAsNoButtonIsHeld() {
+    let rig = GestureRig()
+    defer { rig.pasteboard.releaseGlobally() }
+
+    // No button is down while tests run, so the first look stops it again.
+    rig.monitor.startPolling()
+    #expect(!rig.monitor.isPolling)
 }

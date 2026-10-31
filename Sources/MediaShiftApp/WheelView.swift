@@ -9,7 +9,8 @@ struct WheelView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        GlassEffectContainer(spacing: 8) {
+        // No spacing: the chips are meant to stay separate shapes, never to melt together.
+        GlassEffectContainer(spacing: 0) {
             ZStack {
                 hub
                 ForEach(Array(model.actions.enumerated()), id: \.offset) { index, action in
@@ -27,7 +28,7 @@ struct WheelView: View {
         VStack(spacing: 2) {
             if model.highlighted == nil {
                 FileIconView(urls: model.urls)
-                    .frame(width: 36, height: 36)
+                    .frame(width: 32, height: 32)
             }
             Text(model.hubTitle)
                 .font(.system(size: 13, weight: .semibold))
@@ -39,9 +40,9 @@ struct WheelView: View {
                 .font(.system(size: 11))
                 .foregroundStyle(.primary.opacity(0.75))
                 .multilineTextAlignment(.center)
-                .lineLimit(2)
+                .lineLimit(1)
         }
-        .padding(12)
+        .frame(width: WheelModel.hubTextWidth)
         .frame(width: WheelModel.hubRadius * 2, height: WheelModel.hubRadius * 2)
         .glassEffect(.regular, in: Circle())
     }
@@ -55,13 +56,13 @@ struct WheelView: View {
                     .font(.system(size: 11, weight: .semibold))
                     .accessibilityHidden(true)
             }
+            // Never shrinks or truncates: the chip was measured to hold exactly this.
             Text(action.chipLabel)
-                .font(.system(size: 13, weight: .semibold))
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
+                .font(.system(size: WheelModel.chipFontSize, weight: .semibold))
+                .fixedSize()
         }
         .foregroundStyle(isHighlighted ? Color.white : Color.primary)
-        .frame(width: WheelModel.chipSize.width + (action.symbolName == nil ? 0 : 22), height: WheelModel.chipSize.height)
+        .frame(width: model.chipWidths[index], height: WheelModel.chipHeight)
         // Solid rather than tinted glass, so the target stands out over any wallpaper.
         .background(isHighlighted ? Color.accentColor : .clear, in: Capsule())
         .glassEffect(isHighlighted ? .identity : .regular, in: Capsule())

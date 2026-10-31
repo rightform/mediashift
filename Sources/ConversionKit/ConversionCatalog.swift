@@ -52,6 +52,13 @@ public enum ConversionCatalog {
         return all.filter { $0 != format }
     }
 
+    /// Every format something can be converted into.
+    public static var allTargets: [FileFormat] {
+        FileFormat.allCases.filter { target in
+            FileFormat.allCases.contains { targets(for: $0).contains(target) }
+        }
+    }
+
     public static func canCompress(_ format: FileFormat) -> Bool {
         switch format.kind {
         case .image, .video, .audio: true

@@ -40,12 +40,14 @@ struct VideoPlan {
     var rules: ContainerRules
     var capabilities: MediaCapabilities
     var compression: Compression?
+    var options: MediaOptions
 
     init(
         info: MediaInfo,
         format: FileFormat,
         capabilities: MediaCapabilities,
-        compression: Compression? = nil
+        compression: Compression? = nil,
+        options: MediaOptions = MediaOptions()
     ) throws {
         guard let rules = ContainerRules.of(format) else {
             throw ConversionError("\(format.label) is not a video format this app can write.")
@@ -55,16 +57,40 @@ struct VideoPlan {
         self.rules = rules
         self.capabilities = capabilities
         self.compression = compression
+        self.options = options
     }
 
-    /// The family a transcode goes to. Compression prefers HEVC where the container is happy with it.
+    /// The family a transcode goes to. Compression prefers HEVC where the container is happy with
+    /// it, and a codec named in the options wins wherever the container has a choice.
     var targetFamily: VideoFamily {
         switch format {
         case .webm: .vp9
         case .avi: .mpeg4
         case .m4v: .h264
-        default: compression == nil ? .h264 : .hevc
+        default:
+            switch options.videoCodec {
+            case .h264: .h264
+            case .hevc: .hevc
+            case .automatic: compression == nil ? .h264 : .hevc
+            }
         }
+    }
+
+    /// Whether the source's own video can stay as it is under the options.
+    private func keepsCodec(of video: MediaInfo.Stream) -> Bool {
+        guard [.mp4, .mov, .mkv].contains(format) else { return true }
+        switch options.videoCodec {
+        case .automatic: return true
+        case .h264: return video.codec == "h264"
+        case .hevc: return video.codec == "hevc"
+        }
+    }
+
+    /// The limit to scale down to, if this video is over it. The shorter side stays the same
+    /// through rotation, so a limit means the same for portrait and landscape.
+    private func scalingLimit(for video: MediaInfo.Stream) -> Int? {
+        guard let limit = options.maxVideoResolution, let width = video.width, let height = video.height else { return nil }
+        return min(width, height) > limit ? limit : nil
     }
 
     /// Argument lists to try in order. Later ones give up something, subtitles first and then
@@ -123,7 +149,8 @@ struct VideoPlan {
     // MARK: Video
 
     private func videoArguments(_ video: MediaInfo.Stream, allowCopy: Bool) throws -> [String] {
-        if allowCopy, compression == nil, rules.acceptsVideo(video.codec) {
+        let limit = scalingLimit(for: video)
+        if allowCopy, compression == nil, limit == nil, keepsCodec(of: video), rules.acceptsVideo(video.codec) {
             var copy = ["-c:v:0", "copy"]
             if video.codec == "hevc", rules.tagsHEVC {
                 copy += ["-tag:v:0", "hvc1"]
@@ -151,7 +178,10 @@ struct VideoPlan {
         }
         // H.264 and friends cannot hold odd sizes, and a stray odd pixel should not stop a conversion.
         let isEven = (video.width ?? 1) % 2 == 0 && (video.height ?? 1) % 2 == 0
-        if family != .vp9, !(video.width != nil && isEven) {
+        if let limit {
+            // Decided inside ffmpeg, which sees the picture after applying any rotation flag. -2 keeps the shape and stays even.
+            arguments += ["-filter:v:0", "scale='if(gte(iw,ih),-2,\(limit))':'if(gte(iw,ih),\(limit),-2)'"]
+        } else if family != .vp9, !(video.width != nil && isEven) {
             arguments += ["-filter:v:0", "scale=trunc(iw/2)*2:trunc(ih/2)*2"]
         }
         return arguments
@@ -161,16 +191,17 @@ struct VideoPlan {
         if let bitrate = compression.flatMap({ explicitVideoBitrate($0, family: family, video: video) }) {
             return ["-b:v:0", String(bitrate)] + (family == .vp9 ? vp9Speed : [])
         }
+        let quality = options.videoQuality
         switch family {
         case .h264:
-            return ["-q:v:0", "62"]
+            return ["-q:v:0", quality == .smaller ? "48" : quality == .standard ? "62" : "75"]
         case .hevc:
-            return ["-q:v:0", "56"]
+            return ["-q:v:0", quality == .smaller ? "42" : quality == .standard ? "56" : "70"]
         case .vp9:
-            let crf = compression.map { Self.crf(for: $0.level) } ?? 31
+            let crf = compression.map { Self.crf(for: $0.level) } ?? (quality == .smaller ? 38 : quality == .standard ? 31 : 24)
             return ["-crf", String(crf), "-b:v:0", "0"] + vp9Speed
         case .mpeg4:
-            return ["-q:v:0", "4"]
+            return ["-q:v:0", quality == .smaller ? "7" : quality == .standard ? "4" : "2"]
         }
     }
 

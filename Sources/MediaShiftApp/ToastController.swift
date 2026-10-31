@@ -19,7 +19,7 @@ final class ToastController {
     }
 
     func show() {
-        let size = NSSize(width: 280, height: 56)
+        let size = NSSize(width: 320, height: 66)
         var origin = NSPoint(x: location.x - size.width / 2, y: location.y - size.height / 2)
         if let screen = NSScreen.screens.first(where: { $0.frame.contains(location) }) ?? NSScreen.main {
             let bounds = screen.visibleFrame
@@ -54,6 +54,12 @@ final class ToastController {
         }
     }
 
+    #if DEBUG
+    var previewWindow: NSWindow? {
+        panel
+    }
+    #endif
+
     func close() {
         watcher?.cancel()
         panel?.close()
@@ -84,19 +90,20 @@ private struct ToastView: View {
                         .font(.system(size: 13, weight: .semibold))
                         .lineLimit(1)
                         .truncationMode(.middle)
+                    // Fixed strength, as on the wheel: this too floats over an unknown desktop.
                     Text(subtitle)
                         .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                        .foregroundStyle(.primary.opacity(0.75))
+                        .lineLimit(2)
                 }
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 14)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .contentShape(Capsule())
+            .contentShape(RoundedRectangle(cornerRadius: 18))
         }
         .buttonStyle(.plain)
-        .glassEffect(.regular, in: Capsule())
+        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 18))
         .accessibilityLabel("\(title). \(subtitle)")
     }
 
@@ -144,8 +151,8 @@ private struct ToastView: View {
         if isRunning, let job = jobs.first {
             return jobs.count == 1 ? job.input.lastPathComponent : "\(jobs.count) files"
         }
-        if let failure = failures.first, finished.isEmpty {
-            return jobs.count == 1 ? failure : "\(failures.count) files failed"
+        if !failures.isEmpty, finished.isEmpty {
+            return jobs.count == 1 ? jobs[0].input.lastPathComponent : "\(failures.count) files failed"
         }
         if finished.count == 1, jobs.count == 1 {
             return finished[0].output.lastPathComponent
@@ -155,7 +162,7 @@ private struct ToastView: View {
 
     private var subtitle: String {
         if isRunning, let action = jobs.first?.action { return action.progressTitle }
-        if !failures.isEmpty { return "Details are in the menu bar list" }
+        if let failure = failures.first { return jobs.count == 1 ? failure : "Details are in the menu bar list" }
         if let note = finished.first?.note { return note }
         return "Click to show in Finder"
     }

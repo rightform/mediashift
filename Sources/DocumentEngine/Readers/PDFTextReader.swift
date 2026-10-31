@@ -4,8 +4,8 @@ import PDFKit
 import Vision
 
 public enum PDFTextReader {
-    /// Reads text pages directly and falls back to on-device OCR for scanned pages.
-    public static func read(_ url: URL, progress: ProgressHandler? = nil) async throws -> RichDocument {
+    /// Reads text pages directly and falls back to on-device OCR for scanned pages, unless told not to.
+    public static func read(_ url: URL, recognizesScans: Bool = true, progress: ProgressHandler? = nil) async throws -> RichDocument {
         guard let pdf = PDFDocument(url: url) else {
             throw ConversionError("This PDF could not be opened. It may be damaged.")
         }
@@ -21,7 +21,7 @@ public enum PDFTextReader {
             try Task.checkCancellation()
             guard let page = pdf.page(at: index) else { continue }
             var blocks = blocks(from: page)
-            if blocks.isEmpty, let lines = try? await recognizeText(on: page), !lines.isEmpty {
+            if blocks.isEmpty, recognizesScans, let lines = try? await recognizeText(on: page), !lines.isEmpty {
                 blocks = paragraphs(from: lines.map { Line(text: $0, fontSize: 12) }, bodySize: 12)
             }
             if !blocks.isEmpty {

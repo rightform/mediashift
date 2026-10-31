@@ -191,3 +191,125 @@ func textSurvivesConversionToPDF(source format: FileFormat) async throws {
     let leftovers = try FileManager.default.contentsOfDirectory(atPath: folder.path).filter { $0 != "broken.docx" }
     #expect(leftovers.isEmpty)
 }
+
+// MARK: - Settings reach the result
+
+@Test func aSuffixReachesEveryKindOfName() async throws {
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let note = folder.appendingPathComponent("note.md")
+    try Data("# Title\n\nText.".utf8).write(to: note)
+    let photo = folder.appendingPathComponent("photo.png")
+    try writeImage(to: photo)
+
+    let options = ConversionOptions(convertedSuffix: "web", compressedSuffix: "small", cleanedSuffix: "private")
+
+    let converted = try await Converter.run(.convert(.html), on: note, options: options)
+    #expect(converted.output.lastPathComponent == "note-web.html")
+    let compressed = try await Converter.run(.compress, on: photo, options: options)
+    #expect(compressed.output.lastPathComponent == "photo-small.png")
+    let cleaned = try await Converter.run(.stripMetadata, on: photo, options: options)
+    #expect(cleaned.output.lastPathComponent == "photo-private.png")
+}
+
+@Test func imageSizeAndQualityReachTheFile() async throws {
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+
+    // Noise, because a flat colour compresses to nearly nothing at any quality.
+    let side = 256
+    let context = try #require(CGContext(
+        data: nil, width: side, height: side, bitsPerComponent: 8, bytesPerRow: 0,
+        space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    ))
+    var state: UInt64 = 88172645463325252
+    let bytes = try #require(context.data).assumingMemoryBound(to: UInt8.self)
+    for offset in 0..<context.bytesPerRow * side {
+        state ^= state << 13; state ^= state >> 7; state ^= state << 17
+        bytes[offset] = offset % 4 == 3 ? 255 : UInt8(truncatingIfNeeded: state)
+    }
+    let photo = folder.appendingPathComponent("noise.png")
+    let destination = try #require(CGImageDestinationCreateWithURL(photo as CFURL, UTType.png.identifier as CFString, 1, nil))
+    CGImageDestinationAddImage(destination, try #require(context.makeImage()), nil)
+    #expect(CGImageDestinationFinalize(destination))
+
+    let low = try await Converter.run(.convert(.jpeg), on: photo, options: ConversionOptions(convertedSuffix: "low", imageQuality: 0.3))
+    let high = try await Converter.run(.convert(.jpeg), on: photo, options: ConversionOptions(convertedSuffix: "high", imageQuality: 1))
+    #expect(size(high.output) > size(low.output) * 2)
+
+    let small = try await Converter.run(.convert(.jpeg), on: photo, options: ConversionOptions(convertedSuffix: "small", imageMaxPixelSize: 100))
+    let source = try #require(CGImageSourceCreateWithURL(small.output as CFURL, nil))
+    let properties = try #require(CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any])
+    #expect(properties[kCGImagePropertyPixelWidth] as? Int == 100)
+}
+
+@Test @MainActor func paperSizeReachesThePDF() async throws {
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let note = folder.appendingPathComponent("note.md")
+    try Data("# Title\n\nText.".utf8).write(to: note)
+
+    let a4 = try await Converter.run(.convert(.pdf), on: note, options: ConversionOptions(convertedSuffix: "a4"))
+    let letter = try await Converter.run(.convert(.pdf), on: note, options: ConversionOptions(convertedSuffix: "letter", paperSize: .letter))
+
+    let a4Box = try #require(PDFDocument(url: a4.output)?.page(at: 0)).bounds(for: .mediaBox)
+    #expect(abs(a4Box.width - 595) < 2 && abs(a4Box.height - 842) < 2)
+    let letterBox = try #require(PDFDocument(url: letter.output)?.page(at: 0)).bounds(for: .mediaBox)
+    #expect(abs(letterBox.width - 612) < 2 && abs(letterBox.height - 792) < 2)
+}
+
+@Test @MainActor func pageResolutionReachesTheImages() async throws {
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let note = folder.appendingPathComponent("note.md")
+    try Data("# Title\n\nText.".utf8).write(to: note)
+    let pdf = try await Converter.run(.convert(.pdf), on: note).output
+
+    let low = try await Converter.run(.convert(.png), on: pdf, options: ConversionOptions(convertedSuffix: "low", pageImageDPI: 72))
+    let high = try await Converter.run(.convert(.png), on: pdf, options: ConversionOptions(convertedSuffix: "high", pageImageDPI: 300))
+
+    func width(_ url: URL) throws -> Int {
+        let source = try #require(CGImageSourceCreateWithURL(url as CFURL, nil))
+        let properties = try #require(CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any])
+        return try #require(properties[kCGImagePropertyPixelWidth] as? Int)
+    }
+    // A4 is 8.27 inches wide.
+    #expect(abs(try width(low.output) - 595) < 3)
+    #expect(abs(try width(high.output) - 2480) < 6)
+}
+
+@Test @MainActor func removingMetadataReachesDocumentsAndTheirPDFs() async throws {
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let source = folder.appendingPathComponent("signed.docx")
+    try DOCXWriter.write(RichDocument(title: "Secret Title", author: "Secret Author", blocks: [.paragraph(content: [.text("Body")])]), to: source)
+
+    let keptDoc = try await Converter.run(.convert(.html), on: source, options: ConversionOptions(convertedSuffix: "kept"))
+    #expect(try String(contentsOf: keptDoc.output, encoding: .utf8).contains("Secret Author"))
+
+    let clean = ConversionOptions(removesMetadata: true, convertedSuffix: "clean")
+    let cleanDoc = try await Converter.run(.convert(.html), on: source, options: clean)
+    let html = try String(contentsOf: cleanDoc.output, encoding: .utf8)
+    #expect(!html.contains("Secret Author"))
+    #expect(!html.contains("Secret Title"))
+
+    let cleanPDF = try await Converter.run(.convert(.pdf), on: source, options: clean)
+    let attributes = try #require(PDFDocument(url: cleanPDF.output)).documentAttributes ?? [:]
+    for key in [PDFDocumentAttribute.authorAttribute, .titleAttribute] {
+        #expect(((attributes[key] as? String) ?? "").isEmpty)
+    }
+    #expect(try Data(contentsOf: cleanPDF.output).range(of: Data("Secret".utf8)) == nil)
+}
+
+@Test @MainActor func scansCanBeSkipped() async throws {
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let photo = folder.appendingPathComponent("page.png")
+    try writeImage(to: photo)
+    // An image-only PDF, like a scan, with no text layer to read.
+    let scan = try await Converter.run(.convert(.pdf), on: photo).output
+
+    await #expect(throws: ConversionError("No text was found in this PDF.")) {
+        try await Converter.run(.convert(.txt), on: scan, options: ConversionOptions(recognizesScans: false))
+    }
+}

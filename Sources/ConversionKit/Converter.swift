@@ -13,17 +13,50 @@ public struct ConversionOptions: Sendable {
     public var removesMetadata: Bool
     /// Where results go. Nil means next to the original.
     public var outputDirectory: URL?
+    /// Added to the name of a converted file, as in `report-suffix.pdf`. Nil adds nothing.
+    public var convertedSuffix: String?
+    public var compressedSuffix: String
+    public var cleanedSuffix: String
+    /// 0 to 1, for formats with a quality dial. Nil lets each format use its own good default.
+    public var imageQuality: Double?
+    /// The longest edge of a converted image in pixels. Nil keeps the size.
+    public var imageMaxPixelSize: Int?
+    public var media: MediaOptions
+    /// The page used when a document is laid out here. Office and iWork files keep their own.
+    public var paperSize: PaperSize
+    /// The resolution of pages turned into images.
+    public var pageImageDPI: Double
+    /// Reads scanned PDF pages with on-device text recognition.
+    public var recognizesScans: Bool
 
     public init(
         compressionLevel: CompressionLevel = .balanced,
         targetBytes: Int64? = nil,
         removesMetadata: Bool = false,
-        outputDirectory: URL? = nil
+        outputDirectory: URL? = nil,
+        convertedSuffix: String? = nil,
+        compressedSuffix: String = "compressed",
+        cleanedSuffix: String = "clean",
+        imageQuality: Double? = nil,
+        imageMaxPixelSize: Int? = nil,
+        media: MediaOptions = MediaOptions(),
+        paperSize: PaperSize = .a4,
+        pageImageDPI: Double = 200,
+        recognizesScans: Bool = true
     ) {
         self.compressionLevel = compressionLevel
         self.targetBytes = targetBytes
         self.removesMetadata = removesMetadata
         self.outputDirectory = outputDirectory
+        self.convertedSuffix = convertedSuffix
+        self.compressedSuffix = compressedSuffix
+        self.cleanedSuffix = cleanedSuffix
+        self.imageQuality = imageQuality
+        self.imageMaxPixelSize = imageMaxPixelSize
+        self.media = media
+        self.paperSize = paperSize
+        self.pageImageDPI = pageImageDPI
+        self.recognizesScans = recognizesScans
     }
 }
 
@@ -72,7 +105,7 @@ public enum Converter {
         options: ConversionOptions,
         progress: ProgressHandler?
     ) async throws -> ConversionResult {
-        let output = OutputNaming.outputURL(for: input, format: target, directory: options.outputDirectory)
+        let output = OutputNaming.outputURL(for: input, format: target, suffix: options.convertedSuffix, directory: options.outputDirectory)
 
         // Removes the partial file when any step below fails or the job is cancelled.
         func producing(_ work: () async throws -> Void) async throws -> ConversionResult {
@@ -88,8 +121,10 @@ public enum Converter {
 
         switch source.kind {
         case .video, .audio:
-            return try await producing {
-                try await MediaConverter.convert(input, to: output, format: target, progress: progress)
+            var media = options.media
+            media.removesMetadata = options.removesMetadata
+            return try await producing { [media] in
+                try await MediaConverter.convert(input, to: output, format: target, options: media, progress: progress)
             }
         case .image:
             return try await producing {
@@ -101,7 +136,11 @@ public enum Converter {
                 case .txt:
                     try await recognizeText(in: input, to: output)
                 default:
-                    let imageOptions = ImageOptions(keepsMetadata: !options.removesMetadata)
+                    let imageOptions = ImageOptions(
+                        quality: options.imageQuality,
+                        maxPixelSize: options.imageMaxPixelSize,
+                        keepsMetadata: !options.removesMetadata
+                    )
                     try await ImageConverter.convert(input, to: output, format: target, options: imageOptions)
                 }
             }
@@ -111,19 +150,30 @@ public enum Converter {
 
         switch target {
         case .pdf:
-            return try await producing { try await makePDF(from: input, format: source, to: output) }
+            return try await producing {
+                try await makePDF(from: input, format: source, to: output, options: options)
+                if options.removesMetadata { try stripPDF(output) }
+            }
         case .png, .jpeg:
             return try await pageImages(from: input, format: source, target: target, options: options, progress: progress)
         case .pptx where source == .pdf:
             return try await producing {
-                try PPTXFormat.writeSlides(images: try PDFTools.pageImages(of: input), to: output)
+                try PPTXFormat.writeSlides(images: try PDFTools.pageImages(of: input, dpi: options.pageImageDPI), to: output)
             }
         default:
             return try await producing {
-                let document = try await readDocument(input, format: source, progress: progress)
+                let document = try await readDocument(input, format: source, options: options, progress: progress)
                 try writeDocument(document, to: output, format: target)
             }
         }
+    }
+
+    /// Takes the descriptive fields off a PDF that has just been written.
+    private static func stripPDF(_ url: URL) throws {
+        let stripped = url.deletingLastPathComponent().appendingPathComponent(".\(UUID().uuidString).pdf")
+        defer { try? FileManager.default.removeItem(at: stripped) }
+        try PDFTools.stripMetadata(url, to: stripped)
+        _ = try FileManager.default.replaceItemAt(url, withItemAt: stripped)
     }
 
     // MARK: - Compress and metadata
@@ -134,7 +184,7 @@ public enum Converter {
         options: ConversionOptions,
         progress: ProgressHandler?
     ) async throws -> ConversionResult {
-        let output = OutputNaming.copyURL(for: input, suffix: "compressed", directory: options.outputDirectory)
+        let output = OutputNaming.copyURL(for: input, suffix: options.compressedSuffix, directory: options.outputDirectory)
         let keptOriginalNote = "This file could not be made smaller, so the copy is identical."
         do {
             switch format.kind {
@@ -143,7 +193,7 @@ public enum Converter {
                 progress?(1)
                 return ConversionResult(output: output, note: smaller ? nil : keptOriginalNote)
             case .video, .audio:
-                try await MediaConverter.compress(input, to: output, level: options.compressionLevel, targetBytes: options.targetBytes, progress: progress)
+                try await MediaConverter.compress(input, to: output, level: options.compressionLevel, targetBytes: options.targetBytes, options: options.media, progress: progress)
                 progress?(1)
                 return ConversionResult(output: output)
             default:
@@ -163,7 +213,7 @@ public enum Converter {
         options: ConversionOptions,
         progress: ProgressHandler?
     ) async throws -> ConversionResult {
-        let output = OutputNaming.copyURL(for: input, suffix: "clean", directory: options.outputDirectory)
+        let output = OutputNaming.copyURL(for: input, suffix: options.cleanedSuffix, directory: options.outputDirectory)
         do {
             switch format.kind {
             case .image:
@@ -188,7 +238,26 @@ public enum Converter {
     // MARK: - Documents
 
     /// Everything a document can become goes through `RichDocument`.
-    static func readDocument(_ url: URL, format: FileFormat, progress: ProgressHandler? = nil) async throws -> RichDocument {
+    static func readDocument(
+        _ url: URL,
+        format: FileFormat,
+        options: ConversionOptions = ConversionOptions(),
+        progress: ProgressHandler? = nil
+    ) async throws -> RichDocument {
+        var document = try await readSource(url, format: format, options: options, progress: progress)
+        if options.removesMetadata {
+            document.title = nil
+            document.author = nil
+        }
+        return document
+    }
+
+    private static func readSource(
+        _ url: URL,
+        format: FileFormat,
+        options: ConversionOptions,
+        progress: ProgressHandler?
+    ) async throws -> RichDocument {
         switch format {
         case .txt: return try PlainTextReader.read(url)
         case .md: return try MarkdownReader.read(url)
@@ -196,7 +265,7 @@ public enum Converter {
         case .docx: return try DOCXReader.read(url)
         case .rtf, .doc, .odt: return try AttributedTextReader.read(url, format: format)
         case .epub: return try EPUBReader.read(url)
-        case .pdf: return try await PDFTextReader.read(url, progress: progress)
+        case .pdf: return try await PDFTextReader.read(url, recognizesScans: options.recognizesScans, progress: progress)
         case .xlsx: return try XLSXFormat.read(url)
         case .csv: return try CSVFormat.read(url)
         case .tsv: return try CSVFormat.read(url, delimiter: "\t")
@@ -206,8 +275,8 @@ public enum Converter {
             // No public parser for these. The system renders them, and the text is read from that.
             let (rendering, folder) = try await SystemPreview.render(url)
             defer { try? FileManager.default.removeItem(at: folder) }
-            let pdf = try await pdf(from: rendering, in: folder)
-            return try await PDFTextReader.read(pdf, progress: progress)
+            let pdf = try await pdf(from: rendering, in: folder, paper: options.paperSize)
+            return try await PDFTextReader.read(pdf, recognizesScans: options.recognizesScans, progress: progress)
         default:
             throw ConversionError("\(format.label) files cannot be read as documents.")
         }
@@ -232,12 +301,12 @@ public enum Converter {
 
     /// Office and iWork files look best through the system's own renderer, which knows their
     /// fonts and layout. The shared document model is the fallback when it declines a file.
-    private static func makePDF(from input: URL, format: FileFormat, to output: URL) async throws {
+    private static func makePDF(from input: URL, format: FileFormat, to output: URL, options: ConversionOptions) async throws {
         if [.docx, .doc, .xlsx, .pptx, .pages, .numbers, .key].contains(format) {
             do {
                 let (rendering, folder) = try await SystemPreview.render(input)
                 defer { try? FileManager.default.removeItem(at: folder) }
-                let pdf = try await pdf(from: rendering, in: folder)
+                let pdf = try await pdf(from: rendering, in: folder, paper: options.paperSize)
                 try FileManager.default.copyItem(at: pdf, to: output)
                 return
             } catch let error as CancellationError {
@@ -246,17 +315,17 @@ public enum Converter {
                 if format == .numbers || format == .key { throw error }
             }
         }
-        let document = try await readDocument(input, format: format)
-        try await WebPDFRenderer.render(html: HTMLWriter.render(document), to: output)
+        let document = try await readDocument(input, format: format, options: options)
+        try await WebPDFRenderer.render(html: HTMLWriter.render(document), paper: options.paperSize, to: output)
     }
 
-    private static func pdf(from rendering: SystemPreview.Rendering, in folder: URL) async throws -> URL {
+    private static func pdf(from rendering: SystemPreview.Rendering, in folder: URL, paper: PaperSize) async throws -> URL {
         switch rendering {
         case .pdf(let url):
             return url
         case .html(let index):
             let url = folder.appendingPathComponent("rendered.pdf")
-            try await WebPDFRenderer.render(file: index, to: url)
+            try await WebPDFRenderer.render(file: index, paper: paper, to: url)
             return url
         }
     }
@@ -277,22 +346,22 @@ public enum Converter {
         var pdf = input
         if source != .pdf {
             pdf = scratch.appendingPathComponent("source.pdf")
-            try await makePDF(from: input, format: source, to: pdf)
+            try await makePDF(from: input, format: source, to: pdf, options: options)
         }
 
         let base = input.deletingPathExtension().lastPathComponent
         if try PDFTools.pageCount(of: pdf) == 1 {
-            let output = OutputNaming.outputURL(for: input, format: target, directory: options.outputDirectory)
-            let rendered = try PDFTools.renderPages(of: pdf, into: scratch, baseName: "page", format: target)
+            let output = OutputNaming.outputURL(for: input, format: target, suffix: options.convertedSuffix, directory: options.outputDirectory)
+            let rendered = try PDFTools.renderPages(of: pdf, into: scratch, baseName: "page", format: target, dpi: options.pageImageDPI)
             guard let page = rendered.first else { throw ConversionError("This document has no pages.") }
             try manager.moveItem(at: page, to: output)
             progress?(1)
             return ConversionResult(output: output)
         }
-        let folder = OutputNaming.outputFolder(for: input, directory: options.outputDirectory)
+        let folder = OutputNaming.outputFolder(for: input, suffix: options.convertedSuffix, directory: options.outputDirectory)
         try manager.createDirectory(at: folder, withIntermediateDirectories: true)
         do {
-            try PDFTools.renderPages(of: pdf, into: folder, baseName: base, format: target, progress: progress)
+            try PDFTools.renderPages(of: pdf, into: folder, baseName: base, format: target, dpi: options.pageImageDPI, progress: progress)
         } catch {
             try? manager.removeItem(at: folder)
             throw error

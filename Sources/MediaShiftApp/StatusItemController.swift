@@ -85,6 +85,10 @@ final class StatusItemController: NSObject, NSWindowDelegate, NSDraggingDestinat
         openPopover()
     }
 
+    func previewChooser(for urls: [URL]) {
+        showChooser(for: urls)
+    }
+
     var previewPopoverWindow: NSWindow? {
         popover.contentViewController?.view.window
     }

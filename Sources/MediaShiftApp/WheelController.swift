@@ -20,8 +20,7 @@ final class WheelController {
     /// needed to stay on screen, so the pointer always starts on the cancel hub.
     func show(for urls: [URL], at location: NSPoint) {
         close(animated: false)
-        let actions = ConversionCatalog.actions(for: urls)
-        let model = WheelModel(urls: urls, actions: actions)
+        let model = WheelModel(urls: urls, actions: settings.wheelActions(for: urls))
         self.model = model
 
         let size = NSSize(width: model.diameter, height: model.diameter)
@@ -46,7 +45,7 @@ final class WheelController {
         panel.hidesOnDeactivate = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
 
-        let dropView = WheelDropView(model: model) { [weak self] urls, action in
+        let dropView = WheelDropView(model: model, usesHaptics: settings.wheelHaptics) { [weak self] urls, action in
             self?.perform(action, on: urls)
         }
         let hosting = NSHostingView(rootView: WheelView(model: model))
@@ -69,6 +68,10 @@ final class WheelController {
     var previewWindow: NSWindow? {
         panel
     }
+
+    var previewToastWindow: NSWindow? {
+        toast?.previewWindow
+    }
     #endif
 
     /// The mouse went up. A drop on a slice may still be on its way: the global mouse event and
@@ -86,7 +89,7 @@ final class WheelController {
         let location = NSEvent.mouseLocation
         close(animated: true)
         let jobs = queue.add(urls, action: action)
-        showToast(for: jobs, near: location)
+        if settings.showsToast { showToast(for: jobs, near: location) }
     }
 
     private func showToast(for jobs: [ConversionJob], near location: NSPoint) {
@@ -113,10 +116,12 @@ final class WheelController {
 /// Receives the system drag and decides which slice the pointer is in.
 final class WheelDropView: NSView {
     private let model: WheelModel
+    private let usesHaptics: Bool
     private let onDrop: ([URL], ConversionAction) -> Void
 
-    init(model: WheelModel, onDrop: @escaping ([URL], ConversionAction) -> Void) {
+    init(model: WheelModel, usesHaptics: Bool = true, onDrop: @escaping ([URL], ConversionAction) -> Void) {
         self.model = model
+        self.usesHaptics = usesHaptics
         self.onDrop = onDrop
         super.init(frame: NSRect(x: 0, y: 0, width: model.diameter, height: model.diameter))
         registerForDraggedTypes([.fileURL])
@@ -163,7 +168,7 @@ final class WheelDropView: NSView {
     private func setHighlight(_ index: Int?) {
         guard model.highlighted != index else { return }
         model.highlighted = index
-        if index != nil {
+        if index != nil, usesHaptics {
             NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
         }
     }

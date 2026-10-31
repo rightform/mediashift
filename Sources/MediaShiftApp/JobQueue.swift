@@ -41,11 +41,13 @@ final class JobQueue {
     var hasUnseenFailure = false
     /// Changes when a job ends, so the menu bar icon can acknowledge it.
     private(set) var lastFinishedAt: Date?
+    /// Called when the queue runs dry, with what that stretch of work produced and whether anything failed.
+    @ObservationIgnored var onBatchFinished: (([URL], Bool) -> Void)?
 
     private let settings: AppSettings
     private let historyLimit = 50
-    /// Encoders already use many cores each, so more parallel jobs would only slow them all down.
-    private let concurrency = 3
+    private var batchOutputs: [URL] = []
+    private var batchHadFailure = false
 
     init(settings: AppSettings) {
         self.settings = settings
@@ -107,7 +109,7 @@ final class JobQueue {
     private func startWaitingJobs() {
         var running = jobs.filter { if case .running = $0.state { true } else { false } }.count
         // The list is newest first, so the oldest waiting job goes first.
-        for job in jobs.reversed() where job.state == .waiting && running < concurrency {
+        for job in jobs.reversed() where job.state == .waiting && running < settings.maximumJobs {
             running += 1
             start(job)
         }
@@ -127,14 +129,27 @@ final class JobQueue {
             do {
                 let result = try await Converter.run(action, on: input, options: options, progress: handler)
                 job.state = .finished(output: result.output, note: result.note)
+                self?.batchOutputs.append(result.output)
             } catch is CancellationError {
                 job.state = .cancelled
             } catch {
                 job.state = .failed(message: error.localizedDescription)
                 self?.hasUnseenFailure = true
+                self?.batchHadFailure = true
             }
             self?.lastFinishedAt = Date()
             self?.startWaitingJobs()
+            self?.finishBatchIfIdle()
         }
+    }
+
+    private func finishBatchIfIdle() {
+        guard activeJobs.isEmpty else { return }
+        let outputs = batchOutputs
+        let hadFailure = batchHadFailure
+        batchOutputs = []
+        batchHadFailure = false
+        // A batch that was only cancelled has nothing to announce.
+        if !outputs.isEmpty || hadFailure { onBatchFinished?(outputs, hadFailure) }
     }
 }
