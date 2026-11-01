@@ -61,8 +61,9 @@ struct WheelView: View {
         }
         .foregroundStyle(isHighlighted ? Color.white : Color.primary)
         .frame(width: model.chipWidths[index], height: WheelModel.chipHeight)
-        // Solid rather than tinted, so the target stands out over any wallpaper.
-        .background(isHighlighted ? Color.accentColor : .clear, in: Capsule())
+        // Solid rather than tinted, so the target stands out over any wallpaper. rightform's
+        // terracotta, which holds white text at 4.9:1, makes this the one branded moment in the app.
+        .background(isHighlighted ? Color(red: 180 / 255, green: 85 / 255, blue: 47 / 255) : .clear, in: Capsule())
         .floatingSurface(in: Capsule(), isSolid: isHighlighted)
         .scaleEffect(isHighlighted && !reduceMotion ? 1.1 : 1)
         .offset(model.isVisible || reduceMotion ? offset : .zero)

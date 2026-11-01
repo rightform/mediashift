@@ -1,4 +1,6 @@
 // Draws the app icon: the wheel from the main gesture, with one format picked.
+// The colors are rightform's: ink for the tile, bone on top of it, and light terracotta as the
+// one accent on dark. All flat, because the brand book keeps gradients for its own sign.
 // usage: swift scripts/make-icon.swift scripts/AppIcon.icns
 import AppKit
 
@@ -31,11 +33,6 @@ func render(size: Int) -> Data {
     outline.fill()
     NSGraphicsContext.restoreGraphicsState()
 
-    NSGraphicsContext.saveGraphicsState()
-    outline.addClip()
-    NSGradient(starting: color(0x34302A), ending: color(0x171512))?.draw(in: tile, angle: -90)
-    NSGraphicsContext.restoreGraphicsState()
-
     let center = NSPoint(x: 512, y: 512)
     let count = 8
     let radius: CGFloat = 268
@@ -45,13 +42,13 @@ func render(size: Int) -> Data {
         let picked = index == 1
         let width: CGFloat = picked ? 128 : 104
         let rect = NSRect(x: point.x - width / 2, y: point.y - width / 2, width: width, height: width)
-        (picked ? color(0xFF7350) : color(0xEFEAE2).withAlphaComponent(0.92)).setFill()
+        (picked ? color(0xD8673A) : color(0xF2EEE7)).setFill()
         NSBezierPath(ovalIn: rect).fill()
     }
 
     // The hub, where the pointer starts.
     let hubRect = NSRect(x: center.x - 92, y: center.y - 92, width: 184, height: 184)
-    color(0xEFEAE2).setFill()
+    color(0xD8673A).setFill()
     NSBezierPath(ovalIn: hubRect).fill()
 
     NSGraphicsContext.restoreGraphicsState()

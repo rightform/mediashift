@@ -105,6 +105,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func showPreviewIfRequested() {
         let environment = ProcessInfo.processInfo.environment
         guard let request = environment["MEDIASHIFT_PREVIEW"] else { return }
+        // `MEDIASHIFT_APPEARANCE=light` or `dark` pictures either look, whatever the system is set to.
+        if let appearance = environment["MEDIASHIFT_APPEARANCE"] {
+            NSApp.appearance = NSAppearance(named: appearance == "dark" ? .darkAqua : .aqua)
+        }
         let parts = request.split(separator: ":").map(String.init)
         var window: () -> NSWindow? = { nil }
         switch parts.first {
