@@ -1,38 +1,28 @@
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/brand/hero-dark.svg">
-  <img src="docs/brand/hero-light.svg" alt="MediaShift by rightform. Convert files with one gesture. Hold Shift while dragging a file, and formats appear around the pointer. Drop it on one. The result lands next to the original. Free, offline, no account. No file ever leaves your Mac." width="100%">
-</picture>
+<img src="docs/brand/hero-light.svg#gh-light-mode-only" alt="MediaShift by rightform. Convert files with one gesture. Hold Shift while dragging a file, and formats appear around the pointer. Drop it on one. The result lands next to the original. Free, offline, no account. No file ever leaves your Mac." width="100%">
+<img src="docs/brand/hero-dark.svg#gh-dark-mode-only" alt="MediaShift by rightform. Convert files with one gesture. Hold Shift while dragging a file, and formats appear around the pointer. Drop it on one. The result lands next to the original. Free, offline, no account. No file ever leaves your Mac." width="100%">
 
 <p align="center">
-  <a href="#install"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/brand/button-install-dark.svg"><img src="docs/brand/button-install-light.svg" alt="How to install" height="44"></picture></a>
+  <a href="#install"><img src="docs/brand/button-install.svg" alt="How to install" height="44"></a>
   &nbsp;&nbsp;
-  <a href="#what-it-does"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/brand/link-more-dark.svg"><img src="docs/brand/link-more-light.svg" alt="See what it does" height="44"></picture></a>
+  <a href="#what-it-does"><img src="docs/brand/link-more.svg" alt="See what it does" height="44"></a>
 </p>
 
 <br>
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/brand/demo-dark.svg">
-  <img src="docs/brand/demo-light.svg" alt="Animation: a file is dragged out of the Finder, tapping Shift opens a ring of formats around the pointer, the file is dropped on PDF, and report.pdf appears next to the original." width="100%">
-</picture>
+<img src="docs/brand/demo-light.svg#gh-light-mode-only" alt="Animation: a file is dragged out of the Finder, tapping Shift opens a ring of formats around the pointer, the file is dropped on PDF, and report.pdf appears next to the original." width="100%">
+<img src="docs/brand/demo-dark.svg#gh-dark-mode-only" alt="Animation: a file is dragged out of the Finder, tapping Shift opens a ring of formats around the pointer, the file is dropped on PDF, and report.pdf appears next to the original." width="100%">
 
-<br><br>
+<br>
 
 <a name="what-it-does"></a>
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/brand/head-what-dark.svg">
-  <img src="docs/brand/head-what-light.svg" alt="What it does: one gesture, three jobs." width="100%">
-</picture>
+<img src="docs/brand/head-what-light.svg#gh-light-mode-only" alt="What it does: one gesture, three jobs." width="100%">
+<img src="docs/brand/head-what-dark.svg#gh-dark-mode-only" alt="What it does: one gesture, three jobs." width="100%">
 
-<picture>
-  <source media="(max-width: 640px) and (prefers-color-scheme: dark)" srcset="docs/brand/cards-narrow-dark.svg">
-  <source media="(max-width: 640px)" srcset="docs/brand/cards-narrow-light.svg">
-  <source media="(prefers-color-scheme: dark)" srcset="docs/brand/cards-dark.svg">
-  <img src="docs/brand/cards-light.svg" alt="Convert between 37 formats: documents, spreadsheets, slides, images, video and audio. Compress images, audio, video and PDF by strength or to a set size. Clean GPS position, camera, author and dates from images, audio, video, PDF and Office files." width="100%">
-</picture>
-
-<br>
+<p>
+  <a href="docs/brand/cards-light.svg#gh-light-mode-only"><picture><source media="(max-width: 640px)" srcset="docs/brand/cards-narrow-light.svg"><img src="docs/brand/cards-light.svg" alt="Convert between 37 formats: documents, spreadsheets, slides, images, video and audio. Compress images, audio, video and PDF by strength or to a set size. Clean GPS position, camera, author and dates from images, audio, video, PDF and Office files." width="100%"></picture></a>
+  <a href="docs/brand/cards-dark.svg#gh-dark-mode-only"><picture><source media="(max-width: 640px)" srcset="docs/brand/cards-narrow-dark.svg"><img src="docs/brand/cards-dark.svg" alt="Convert between 37 formats: documents, spreadsheets, slides, images, video and audio. Compress images, audio, video and PDF by strength or to a set size. Clean GPS position, camera, author and dates from images, audio, video, PDF and Office files." width="100%"></picture></a>
+</p>
 
 Originals are never changed, and a new file never replaces an existing one.
 
@@ -58,10 +48,8 @@ Office and iWork files do not need Office or iWork to be installed. Scanned PDFs
 
 <a name="install"></a>
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/brand/head-install-dark.svg">
-  <img src="docs/brand/head-install-light.svg" alt="Install: two ways to get started." width="100%">
-</picture>
+<img src="docs/brand/head-install-light.svg#gh-light-mode-only" alt="Install: two ways to get started." width="100%">
+<img src="docs/brand/head-install-dark.svg#gh-dark-mode-only" alt="Install: two ways to get started." width="100%">
 
 You need a Mac with **macOS 15 or later**, with Apple Silicon or Intel. To check yours, open the Apple menu and choose **About This Mac**. MediaShift is not in the Mac App Store or in Homebrew.
 
@@ -182,10 +170,8 @@ rm -rf ~/Library/Caches/MediaShift
 
 <br>
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/brand/head-use-dark.svg">
-  <img src="docs/brand/head-use-light.svg" alt="Using it: it stays out of your way." width="100%">
-</picture>
+<img src="docs/brand/head-use-light.svg#gh-light-mode-only" alt="Using it: it stays out of your way." width="100%">
+<img src="docs/brand/head-use-dark.svg#gh-dark-mode-only" alt="Using it: it stays out of your way." width="100%">
 
 **The wheel.** Tap Shift at any moment while dragging files from anywhere. Drop on a format, or back in the middle to cancel.
 
@@ -194,10 +180,8 @@ rm -rf ~/Library/Caches/MediaShift
 **Settings.** Six pages, and you can leave all of them as they are.
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/settings-dark.png">
-    <img src="docs/brand/settings-light.png" alt="The Wheel page of the settings: which key opens the wheel, haptic feedback, and checkboxes for which formats appear on it." width="440">
-  </picture>
+  <img src="docs/brand/settings-light.png#gh-light-mode-only" alt="The Wheel page of the settings: which key opens the wheel, haptic feedback, and checkboxes for which formats appear on it." width="440">
+  <img src="docs/brand/settings-dark.png#gh-dark-mode-only" alt="The Wheel page of the settings: which key opens the wheel, haptic feedback, and checkboxes for which formats appear on it." width="440">
 </p>
 
 <details>
@@ -306,21 +290,20 @@ Images go through ImageIO, and audio and video through ffmpeg with the Mac's har
 
 <br>
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/brand/head-made-dark.svg">
-  <img src="docs/brand/head-made-light.svg" alt="Made by rightform." width="100%">
-</picture>
+<img src="docs/brand/head-made-light.svg#gh-light-mode-only" alt="Made by rightform." width="100%">
+<img src="docs/brand/head-made-dark.svg#gh-dark-mode-only" alt="Made by rightform." width="100%">
 
 rightform designs and builds digital solutions fitted to a specific need: websites, shops, automations and AI tools. Got a question, an idea, or a project of your own? Write to me.
 
 <p>
-  <a href="mailto:hej@rightform.pl"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/brand/button-contact-dark.svg"><img src="docs/brand/button-contact-light.svg" alt="Write to hej@rightform.pl" height="44"></picture></a>
+  <a href="mailto:hej@rightform.pl"><img src="docs/brand/button-contact.svg" alt="Write to hej@rightform.pl" height="44"></a>
 </p>
 
 <br>
 
 <p>
-  <a href="https://rightform.pl"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/brand/rightform-logo-dark.png"><img src="docs/brand/rightform-logo.png" alt="rightform" width="200"></picture></a>
+  <a href="https://rightform.pl/#gh-light-mode-only"><img src="docs/brand/rightform-logo.png" alt="rightform" width="200"></a>
+  <a href="https://rightform.pl/#gh-dark-mode-only"><img src="docs/brand/rightform-logo-dark.png" alt="rightform" width="200"></a>
 </p>
 
 [hej@rightform.pl](mailto:hej@rightform.pl) · [rightform.pl](https://rightform.pl)

@@ -1,6 +1,10 @@
 // Draws the README's artwork in the style of rightform.pl, for GitHub's light and dark themes.
 // GitHub shows these as plain images with no web fonts, so all text becomes outlines.
 // The logo inside the hero is the official file, already in the output folder.
+// The README picks between the two themes with #gh-light-mode-only and #gh-dark-mode-only, because
+// a <picture> follows the system, which can differ from the theme chosen on GitHub. GitHub hides
+// such an image through the address of the link around it, so an image that links somewhere else
+// cannot switch. That is why the buttons come in one version that reads on both themes.
 // usage: swift scripts/make-readme-art.swift path/to/instrument-sans.woff2 docs/brand
 import CoreText
 import Foundation
@@ -218,20 +222,23 @@ func hero(_ theme: Theme) throws -> String {
 
 // MARK: - Buttons
 
-func button(_ theme: Theme, label: String) -> String {
+/// Terracotta with white text: 4.9:1 for the text and against white, 3.8:1 against GitHub's dark page.
+func button(label: String) -> String {
     let f = font(20, 600)
     let width = measure(label, f) + 60 + 30
-    let body = ##"<rect width="\##(num(width))" height="56" rx="28" fill="\##(theme.button)"/>"##
-        + text(label, size: 20, weight: 600, x: 30, y: 35, color: theme.buttonText)
-        + arrow(x: width - 48, y: 28, size: 20, color: theme.buttonText)
+    let body = ##"<rect width="\##(num(width))" height="56" rx="28" fill="#b4552f"/>"##
+        + text(label, size: 20, weight: 600, x: 30, y: 35, color: "#ffffff")
+        + arrow(x: width - 48, y: 28, size: 20, color: "#ffffff")
     return document(width: width, height: 56, title: label, body: body)
 }
 
-func link(_ theme: Theme, label: String) -> String {
+/// Bone with ink text, and a thin line that gives it an edge on a white page.
+func secondaryButton(label: String) -> String {
     let f = font(20, 600)
-    let width = measure(label, f) + 42
-    let body = text(label, size: 20, weight: 600, x: 2, y: 35, color: theme.ink)
-        + arrow(x: width - 24, y: 28, size: 20, color: theme.ink)
+    let width = measure(label, f) + 60 + 30
+    let body = ##"<rect x="1" y="1" width="\##(num(width - 2))" height="54" rx="27" fill="#f2eee7" stroke="#d8d1c5" stroke-width="1.5"/>"##
+        + text(label, size: 20, weight: 600, x: 30, y: 35, color: "#1f1d1a")
+        + arrow(x: width - 48, y: 28, size: 20, color: "#1f1d1a")
     return document(width: width, height: 56, title: label, body: body)
 }
 
@@ -463,11 +470,12 @@ func demo(_ theme: Theme) -> String {
 
 // MARK: - Output
 
+try write("button-install.svg", button(label: "How to install"))
+try write("button-contact.svg", button(label: "hej@rightform.pl"))
+try write("link-more.svg", secondaryButton(label: "See what it does"))
+
 for theme in themes {
     try write("hero-\(theme.name).svg", try hero(theme))
-    try write("button-install-\(theme.name).svg", button(theme, label: "How to install"))
-    try write("button-contact-\(theme.name).svg", button(theme, label: "hej@rightform.pl"))
-    try write("link-more-\(theme.name).svg", link(theme, label: "See what it does"))
     try write("demo-\(theme.name).svg", demo(theme))
     try write("cards-\(theme.name).svg", cards(theme, width: 1000, columns: 3, unit: 1))
     try write("cards-narrow-\(theme.name).svg", cards(theme, width: 600, columns: 1, unit: 1.5))
