@@ -159,11 +159,13 @@ private final class QuickLookProcess: @unchecked Sendable {
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
 
+        let deadline = Date().addingTimeInterval(timeout)
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
                 process.terminationHandler = { [self] _ in
                     lock.lock()
-                    let didTimeOut = timedOut
+                    // Measured as well, because the timer below can run late on a busy machine.
+                    let didTimeOut = timedOut || Date() >= deadline
                     lock.unlock()
                     if didTimeOut {
                         continuation.resume(throwing: ConversionError("macOS took too long to preview this file."))

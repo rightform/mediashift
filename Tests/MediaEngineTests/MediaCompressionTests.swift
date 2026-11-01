@@ -28,7 +28,7 @@ import Testing
 
     // MARK: By level
 
-    @Test func levelsShrinkVideoAndPreferHEVC() async throws {
+    @Test(.enabled(if: videoEncoderAvailable)) func levelsShrinkVideoAndPreferHEVC() async throws {
         let scratch = try Scratch()
         defer { scratch.remove() }
         let source = try makeSource(in: scratch)
@@ -48,7 +48,7 @@ import Testing
         #expect(try #require(sizes[.light]) < fileSize(source))
     }
 
-    @Test func movAlsoGetsHEVCButWebMGetsVP9() async throws {
+    @Test(.enabled(if: videoEncoderAvailable)) func movAlsoGetsHEVCButWebMGetsVP9() async throws {
         let scratch = try Scratch()
         defer { scratch.remove() }
         let source = try makeSource(in: scratch, seconds: 3)
@@ -80,7 +80,7 @@ import Testing
 
     // MARK: By size
 
-    @Test func targetSizeLandsWithinTenPercentUnder() async throws {
+    @Test(.enabled(if: videoEncoderAvailable)) func targetSizeLandsWithinTenPercentUnder() async throws {
         let scratch = try Scratch()
         defer { scratch.remove() }
         let source = try makeSource(in: scratch)
@@ -110,7 +110,7 @@ import Testing
         #expect(Double(size) >= Double(target) * 0.8, "\(size) is far under \(target)")
     }
 
-    @Test func absurdlySmallTargetsAreRefusedWithAHint() async throws {
+    @Test(.enabled(if: videoEncoderAvailable)) func absurdlySmallTargetsAreRefusedWithAHint() async throws {
         let scratch = try Scratch()
         defer { scratch.remove() }
         let source = try makeSource(in: scratch, seconds: 3)
@@ -123,7 +123,7 @@ import Testing
         #expect(scratch.contents == ["source.mp4"])
     }
 
-    @Test func aTargetAboveTheSourceSizeKeepsTheSource() async throws {
+    @Test(.enabled(if: videoEncoderAvailable)) func aTargetAboveTheSourceSizeKeepsTheSource() async throws {
         let scratch = try Scratch()
         defer { scratch.remove() }
         let source = try makeSource(in: scratch, seconds: 3)
@@ -134,7 +134,7 @@ import Testing
         #expect(try Data(contentsOf: output) == Data(contentsOf: source))
     }
 
-    @Test func targetProgressStaysInRangeAndEndsAtOne() async throws {
+    @Test(.enabled(if: videoEncoderAvailable)) func targetProgressStaysInRangeAndEndsAtOne() async throws {
         let scratch = try Scratch()
         defer { scratch.remove() }
         let source = try makeSource(in: scratch, seconds: 4)

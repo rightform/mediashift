@@ -31,7 +31,7 @@ private func isRunning(mentioning marker: String) -> Bool {
         return url
     }
 
-    @Test(.timeLimit(.minutes(2)))
+    @Test(.enabled(if: videoEncoderAvailable), .timeLimit(.minutes(2)))
     func cancellingStopsFFmpegAndRemovesTheOutput() async throws {
         let scratch = try Scratch()
         defer { scratch.remove() }
@@ -63,7 +63,7 @@ private func isRunning(mentioning marker: String) -> Bool {
         #expect(scratch.contents == ["long.mp4"], "leftover files: \(scratch.contents)")
     }
 
-    @Test(.timeLimit(.minutes(2)))
+    @Test(.enabled(if: videoEncoderAvailable), .timeLimit(.minutes(2)))
     func cancellingACompressionCleansUpEveryAttempt() async throws {
         let scratch = try Scratch()
         defer { scratch.remove() }
@@ -84,7 +84,7 @@ private func isRunning(mentioning marker: String) -> Bool {
         #expect(scratch.contents == ["long.mp4"], "leftover files: \(scratch.contents)")
     }
 
-    @Test func cancellingBeforeStartingDoesNothing() async throws {
+    @Test(.enabled(if: videoEncoderAvailable)) func cancellingBeforeStartingDoesNothing() async throws {
         let scratch = try Scratch()
         defer { scratch.remove() }
         let input = scratch.file("clip.mp4")

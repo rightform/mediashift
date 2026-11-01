@@ -52,7 +52,7 @@ struct VideoPair: Sendable, CustomTestStringConvertible {
 @Suite(.enabled(if: ffmpegAvailable)) struct MediaConversionTests {
     // MARK: Video containers
 
-    @Test("Every video container converts into every other", arguments: VideoPair.all)
+    @Test("Every video container converts into every other", .enabled(if: videoEncoderAvailable), arguments: VideoPair.all)
     func containerMatrix(_ pair: VideoPair) async throws {
         let scratch = try Scratch()
         defer { scratch.remove() }
@@ -73,7 +73,7 @@ struct VideoPair: Sendable, CustomTestStringConvertible {
         #expect(scratch.contents.count == 2)
     }
 
-    @Test func mp4ToMovCopiesTheStreamsAndStartsFast() async throws {
+    @Test(.enabled(if: videoEncoderAvailable)) func mp4ToMovCopiesTheStreamsAndStartsFast() async throws {
         let scratch = try Scratch()
         defer { scratch.remove() }
         let input = scratch.file("clip.mp4")
@@ -89,7 +89,7 @@ struct VideoPair: Sendable, CustomTestStringConvertible {
         #expect(log.contains("Input #0, mov,mp4"))
     }
 
-    @Test func mp4ToMkvCopiesTheStreams() async throws {
+    @Test(.enabled(if: videoEncoderAvailable)) func mp4ToMkvCopiesTheStreams() async throws {
         let scratch = try Scratch()
         defer { scratch.remove() }
         let input = scratch.file("clip.mp4")
@@ -103,7 +103,7 @@ struct VideoPair: Sendable, CustomTestStringConvertible {
         #expect(try runFFmpeg(["-i", output.path]).output.contains("Input #0, matroska,webm"))
     }
 
-    @Test func mp4ToWebMBecomesVP9AndOpus() async throws {
+    @Test(.enabled(if: videoEncoderAvailable)) func mp4ToWebMBecomesVP9AndOpus() async throws {
         let scratch = try Scratch()
         defer { scratch.remove() }
         let input = scratch.file("clip.mp4")
@@ -119,7 +119,7 @@ struct VideoPair: Sendable, CustomTestStringConvertible {
         #expect(abs((info.duration ?? 0) - 3) < 0.5)
     }
 
-    @Test func hevcKeepsTheAppleTagInMP4() async throws {
+    @Test(.enabled(if: videoEncoderAvailable)) func hevcKeepsTheAppleTagInMP4() async throws {
         let scratch = try Scratch()
         defer { scratch.remove() }
         let input = scratch.file("clip.mkv")
@@ -133,7 +133,7 @@ struct VideoPair: Sendable, CustomTestStringConvertible {
         #expect(try streamHash(input, map: "0:v:0") == streamHash(output, map: "0:v:0"))
     }
 
-    @Test func oddSizesDoNotBreakH264() async throws {
+    @Test(.enabled(if: videoEncoderAvailable)) func oddSizesDoNotBreakH264() async throws {
         let scratch = try Scratch()
         defer { scratch.remove() }
         let input = scratch.file("odd.webm")
@@ -153,7 +153,7 @@ struct VideoPair: Sendable, CustomTestStringConvertible {
         #expect(video.pixelFormat == "yuv420p")
     }
 
-    @Test func wideCompatibilityPixelFormatForTenBitSources() async throws {
+    @Test(.enabled(if: videoEncoderAvailable)) func wideCompatibilityPixelFormatForTenBitSources() async throws {
         let scratch = try Scratch()
         defer { scratch.remove() }
         let input = scratch.file("tenbit.mkv")
@@ -183,7 +183,7 @@ struct VideoPair: Sendable, CustomTestStringConvertible {
         return input
     }
 
-    @Test(arguments: [FileFormat.mkv, .mov, .webm])
+    @Test(.enabled(if: videoEncoderAvailable), arguments: [FileFormat.mkv, .mov, .webm])
     func subtitlesAreKeptWhereTheContainerAllowsThem(format: FileFormat) async throws {
         let scratch = try Scratch()
         defer { scratch.remove() }
@@ -195,7 +195,7 @@ struct VideoPair: Sendable, CustomTestStringConvertible {
         #expect(try mediaInfo(output).subtitleStreams.count == 1)
     }
 
-    @Test func subtitlesNeverStopAConversion() async throws {
+    @Test(.enabled(if: videoEncoderAvailable)) func subtitlesNeverStopAConversion() async throws {
         let scratch = try Scratch()
         defer { scratch.remove() }
         let input = try makeSubtitledMP4(in: scratch)
@@ -210,7 +210,7 @@ struct VideoPair: Sendable, CustomTestStringConvertible {
 
     // MARK: GIF
 
-    @Test func videoToGifIsAtMost720WideAt15FramesAPlace() async throws {
+    @Test(.enabled(if: videoEncoderAvailable)) func videoToGifIsAtMost720WideAt15FramesAPlace() async throws {
         let scratch = try Scratch()
         defer { scratch.remove() }
         let input = scratch.file("wide.mp4")
@@ -226,7 +226,7 @@ struct VideoPair: Sendable, CustomTestStringConvertible {
         #expect((29 ... 31).contains(ImageFixture.frameCount(of: output)))
     }
 
-    @Test func smallVideosAreNotEnlargedForGif() async throws {
+    @Test(.enabled(if: videoEncoderAvailable)) func smallVideosAreNotEnlargedForGif() async throws {
         let scratch = try Scratch()
         defer { scratch.remove() }
         let input = scratch.file("small.mp4")
@@ -240,7 +240,7 @@ struct VideoPair: Sendable, CustomTestStringConvertible {
 
     // MARK: Audio
 
-    @Test("Video to audio extracts the sound", arguments: [
+    @Test("Video to audio extracts the sound", .enabled(if: videoEncoderAvailable), arguments: [
         (FileFormat.mp3, "mp3"), (.m4a, "aac"), (.ogg, "vorbis"), (.opus, "opus"), (.flac, "flac"), (.wav, "pcm_s16le"), (.aiff, "pcm_s16be"),
     ])
     func extractsAudio(format: FileFormat, codec: String) async throws {
@@ -258,7 +258,7 @@ struct VideoPair: Sendable, CustomTestStringConvertible {
         #expect(abs((info.duration ?? 0) - 3) < 0.5)
     }
 
-    @Test func extractingAACIsALosslessCopy() async throws {
+    @Test(.enabled(if: videoEncoderAvailable)) func extractingAACIsALosslessCopy() async throws {
         let scratch = try Scratch()
         defer { scratch.remove() }
         let input = scratch.file("clip.mp4")
@@ -333,7 +333,7 @@ struct VideoPair: Sendable, CustomTestStringConvertible {
 
     // MARK: Errors
 
-    @Test func aVideoWithoutSoundCannotBecomeAnAudioFile() async throws {
+    @Test(.enabled(if: videoEncoderAvailable)) func aVideoWithoutSoundCannotBecomeAnAudioFile() async throws {
         let scratch = try Scratch()
         defer { scratch.remove() }
         let input = scratch.file("silent.mp4")
@@ -385,7 +385,7 @@ struct VideoPair: Sendable, CustomTestStringConvertible {
         #expect(scratch.contents == ["broken.mp4"])
     }
 
-    @Test func audioFormatsAreRefusedAsVideoTargetsWithoutFuss() async throws {
+    @Test(.enabled(if: videoEncoderAvailable)) func audioFormatsAreRefusedAsVideoTargetsWithoutFuss() async throws {
         let scratch = try Scratch()
         defer { scratch.remove() }
         let input = scratch.file("clip.mp4")
@@ -399,7 +399,7 @@ struct VideoPair: Sendable, CustomTestStringConvertible {
 
     // MARK: Progress
 
-    @Test func progressClimbsAndEndsAtOne() async throws {
+    @Test(.enabled(if: videoEncoderAvailable)) func progressClimbsAndEndsAtOne() async throws {
         let scratch = try Scratch()
         defer { scratch.remove() }
         let input = scratch.file("clip.mp4")
@@ -445,7 +445,7 @@ struct VideoPair: Sendable, CustomTestStringConvertible {
 
     // MARK: Metadata
 
-    @Test func stripRemovesTagsWithoutReencoding() async throws {
+    @Test(.enabled(if: videoEncoderAvailable)) func stripRemovesTagsWithoutReencoding() async throws {
         let scratch = try Scratch()
         defer { scratch.remove() }
         let input = scratch.file("home.mp4")
@@ -485,7 +485,7 @@ struct VideoPair: Sendable, CustomTestStringConvertible {
         #expect(try streamHash(input, map: "0:a:0") == streamHash(output, map: "0:a:0"))
     }
 
-    @Test func stripKeepsSubtitlesAndSecondaryStreams() async throws {
+    @Test(.enabled(if: videoEncoderAvailable)) func stripKeepsSubtitlesAndSecondaryStreams() async throws {
         let scratch = try Scratch()
         defer { scratch.remove() }
         let input = try makeSubtitledMP4(in: scratch)

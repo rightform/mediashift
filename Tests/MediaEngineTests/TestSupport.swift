@@ -9,6 +9,22 @@ import UniformTypeIdentifiers
 /// Tests that need ffmpeg use this and skip cleanly when no binary can be found.
 let ffmpegAvailable = FFmpegLocator.find() != nil
 
+/// Tests that need the Mac's video encoder use this. GitHub's Intel machines are virtual, with no
+/// video hardware, so the encoder cannot start there. Every Apple Silicon Mac has one, so there
+/// a failure stays a failure instead of quietly skipping the tests.
+let videoEncoderAvailable: Bool = {
+    #if arch(arm64)
+    return ffmpegAvailable
+    #else
+    guard ffmpegAvailable else { return false }
+    let probe = try? runFFmpeg([
+        "-loglevel", "error", "-f", "lavfi", "-i", "testsrc2=size=64x64:rate=5:duration=0.2",
+        "-c:v", "h264_videotoolbox", "-allow_sw", "1", "-f", "null", "-",
+    ])
+    return probe?.status == 0
+    #endif
+}()
+
 /// A fresh folder for one test. Call `remove()` in a `defer`.
 struct Scratch {
     let url: URL

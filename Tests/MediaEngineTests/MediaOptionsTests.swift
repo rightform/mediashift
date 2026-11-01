@@ -163,7 +163,7 @@ private func text(_ info: MediaInfo, to format: FileFormat, _ options: MediaOpti
         return (video.width, video.height)
     }
 
-    @Test func aLandscapeVideoShrinksToTheLimit() async throws {
+    @Test(.enabled(if: videoEncoderAvailable)) func aLandscapeVideoShrinksToTheLimit() async throws {
         let scratch = try Scratch()
         defer { scratch.remove() }
         let input = scratch.file("wide.mp4")
@@ -177,7 +177,7 @@ private func text(_ info: MediaInfo, to format: FileFormat, _ options: MediaOpti
         #expect(width == 854)
     }
 
-    @Test func aPortraitVideoShrinksByItsShorterSide() async throws {
+    @Test(.enabled(if: videoEncoderAvailable)) func aPortraitVideoShrinksByItsShorterSide() async throws {
         let scratch = try Scratch()
         defer { scratch.remove() }
         let input = scratch.file("tall.mp4")
@@ -191,7 +191,7 @@ private func text(_ info: MediaInfo, to format: FileFormat, _ options: MediaOpti
         #expect(height == 854)
     }
 
-    @Test func aRotatedPhoneVideoShrinksTheSameWay() async throws {
+    @Test(.enabled(if: videoEncoderAvailable)) func aRotatedPhoneVideoShrinksTheSameWay() async throws {
         let scratch = try Scratch()
         defer { scratch.remove() }
         let source = scratch.file("source.mp4")
@@ -208,7 +208,7 @@ private func text(_ info: MediaInfo, to format: FileFormat, _ options: MediaOpti
         #expect(max(width ?? 0, height ?? 0) == 854)
     }
 
-    @Test func aSmallerVideoIsCopiedUntouched() async throws {
+    @Test(.enabled(if: videoEncoderAvailable)) func aSmallerVideoIsCopiedUntouched() async throws {
         let scratch = try Scratch()
         defer { scratch.remove() }
         let input = scratch.file("small.mp4")
@@ -220,7 +220,7 @@ private func text(_ info: MediaInfo, to format: FileFormat, _ options: MediaOpti
         #expect(try streamHash(output, map: "0:v:0") == streamHash(input, map: "0:v:0"))
     }
 
-    @Test func aNamedCodecReallyComesOut() async throws {
+    @Test(.enabled(if: videoEncoderAvailable)) func aNamedCodecReallyComesOut() async throws {
         let scratch = try Scratch()
         defer { scratch.remove() }
         let input = scratch.file("clip.mp4")
@@ -232,7 +232,7 @@ private func text(_ info: MediaInfo, to format: FileFormat, _ options: MediaOpti
         #expect(try mediaInfo(output).mainVideo?.codec == "hevc")
     }
 
-    @Test func higherQualityMakesALargerFile() async throws {
+    @Test(.enabled(if: videoEncoderAvailable)) func higherQualityMakesALargerFile() async throws {
         let scratch = try Scratch()
         defer { scratch.remove() }
         let input = scratch.file("clip.mp4")
@@ -259,7 +259,7 @@ private func text(_ info: MediaInfo, to format: FileFormat, _ options: MediaOpti
         #expect(bitrate >= 170_000 && bitrate <= 210_000)
     }
 
-    @Test func convertingCanLeaveTagsBehind() async throws {
+    @Test(.enabled(if: videoEncoderAvailable)) func convertingCanLeaveTagsBehind() async throws {
         let scratch = try Scratch()
         defer { scratch.remove() }
         let input = scratch.file("tagged.mp4")
@@ -276,7 +276,7 @@ private func text(_ info: MediaInfo, to format: FileFormat, _ options: MediaOpti
         #expect(!log.contains("Someone"))
     }
 
-    @Test func gifSettingsShowInTheFile() async throws {
+    @Test(.enabled(if: videoEncoderAvailable)) func gifSettingsShowInTheFile() async throws {
         let scratch = try Scratch()
         defer { scratch.remove() }
         let input = scratch.file("clip.mp4")
@@ -291,7 +291,7 @@ private func text(_ info: MediaInfo, to format: FileFormat, _ options: MediaOpti
         #expect(frames >= 8 && frames <= 12)
     }
 
-    @Test func compressionRespectsTheLimit() async throws {
+    @Test(.enabled(if: videoEncoderAvailable)) func compressionRespectsTheLimit() async throws {
         let scratch = try Scratch()
         defer { scratch.remove() }
         let input = scratch.file("clip.mp4")
@@ -302,5 +302,22 @@ private func text(_ info: MediaInfo, to format: FileFormat, _ options: MediaOpti
 
         let (_, height) = try size(output)
         #expect(height == 480)
+    }
+}
+
+@Suite struct EncoderFailureMessageTests {
+    @Test func aMissingEncoderSaysWhatToDo() {
+        let log = """
+        [h264_videotoolbox @ 0x7f8] Cannot create compression session: -12908
+        [out#0/mp4 @ 0x7f9] Nothing was written into output file, because at least one of its streams received no packets.
+        """
+        let message = FFmpeg.failureMessage(from: log)
+        #expect(message.contains("video encoder"))
+        #expect(message.contains("WebM"))
+        #expect(!message.contains("streams"))
+    }
+
+    @Test func otherFailuresStillShowTheirReason() {
+        #expect(FFmpeg.failureMessage(from: "Invalid data found when processing input") == "The conversion failed: Invalid data found when processing input")
     }
 }
