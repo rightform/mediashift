@@ -153,7 +153,8 @@ fetch() {
     STEP="downloading $name"
     say "Downloading $(basename "$url")"
     rm -f "$file" "$file.part"
-    curl --fail --silent --show-error --location --retry 3 --proto '=https' --tlsv1.2 \
+    # --retry alone leaves out a dropped connection, which is the most likely failure here.
+    curl --fail --silent --show-error --location --retry 5 --retry-all-errors --retry-delay 5 --proto '=https' --tlsv1.2 \
         --output "$file.part" "$url"
     if ! verify "$file.part" "$sha"; then
         local actual
