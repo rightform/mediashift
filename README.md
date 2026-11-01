@@ -14,7 +14,7 @@
 
 <br>
 
-<a name="what-it-does"></a>
+<a id="what-it-does"></a>
 
 <img src="docs/brand/head-what-light.svg#gh-light-mode-only" alt="What it does: one gesture, three jobs." width="100%">
 <img src="docs/brand/head-what-dark.svg#gh-dark-mode-only" alt="What it does: one gesture, three jobs." width="100%">
@@ -46,7 +46,7 @@ Office and iWork files do not need Office or iWork to be installed. Scanned PDFs
 
 <br>
 
-<a name="install"></a>
+<a id="install"></a>
 
 <img src="docs/brand/head-install-light.svg#gh-light-mode-only" alt="Install: two ways to get started." width="100%">
 <img src="docs/brand/head-install-dark.svg#gh-dark-mode-only" alt="Install: two ways to get started." width="100%">
