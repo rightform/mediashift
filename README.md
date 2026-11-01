@@ -69,9 +69,9 @@ You need a Mac with **macOS 15 or later**, with Apple Silicon or Intel. To check
 
 For almost everyone. No coding, and no Terminal.
 
-> **Not available yet.** The first download will appear on the [Releases page](https://github.com/aleksanderjagusiak/mediashift/releases) once Apple has checked the app, a step called notarization. Until then, build it yourself below.
+> **Not available yet.** The first download will appear on the [Releases page](https://github.com/rightform/mediashift/releases) once Apple has checked the app, a step called notarization. Until then, build it yourself below.
 
-1. On the [Releases page](https://github.com/aleksanderjagusiak/mediashift/releases), under **Assets** of the newest version, click the file that ends in `.dmg`.
+1. On the [Releases page](https://github.com/rightform/mediashift/releases), under **Assets** of the newest version, click the file that ends in `.dmg`.
 2. Open the downloaded file and drag **MediaShift** onto **Applications**.
 3. Close the window, and in the Finder sidebar click the eject symbol next to **MediaShift**. You can now delete the `.dmg` file.
 4. Open **MediaShift** from your Applications folder. If macOS asks whether you are sure, click **Open**.
@@ -96,7 +96,7 @@ This works today, and you do not need to know how to code. You paste a few lines
 3. **Get MediaShift.** Paste these lines one at a time, pressing Return after each.
 
     ```bash
-    git clone https://github.com/aleksanderjagusiak/mediashift.git
+    git clone https://github.com/rightform/mediashift.git
     ```
 
     ```bash
@@ -155,7 +155,7 @@ Your menu bar may be full. On a MacBook with a notch, icons that do not fit are 
 
 <br>
 
-macOS shows this for a downloaded copy that Apple has not checked yet. It stops once downloads are notarized, and it never appears for a copy you built yourself. Only continue if the copy came from this project's [Releases page](https://github.com/aleksanderjagusiak/mediashift/releases).
+macOS shows this for a downloaded copy that Apple has not checked yet. It stops once downloads are notarized, and it never appears for a copy you built yourself. Only continue if the copy came from this project's [Releases page](https://github.com/rightform/mediashift/releases).
 
 1. Click **Done** in the message. Do not move the app to the Trash.
 2. Open System Settings, then **Privacy & Security**, and scroll down to the **Security** section.
