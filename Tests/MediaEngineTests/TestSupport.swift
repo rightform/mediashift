@@ -17,9 +17,10 @@ let videoEncoderAvailable: Bool = {
     return ffmpegAvailable
     #else
     guard ffmpegAvailable else { return false }
+    // Asks for the same as the video fixtures do, which is the hardware encoder.
     let probe = try? runFFmpeg([
-        "-loglevel", "error", "-f", "lavfi", "-i", "testsrc2=size=64x64:rate=5:duration=0.2",
-        "-c:v", "h264_videotoolbox", "-allow_sw", "1", "-f", "null", "-",
+        "-loglevel", "error", "-f", "lavfi", "-i", "testsrc2=size=320x240:rate=25:duration=0.2",
+        "-c:v", "h264_videotoolbox", "-b:v", "1500k", "-f", "null", "-",
     ])
     return probe?.status == 0
     #endif

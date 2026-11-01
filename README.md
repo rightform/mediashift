@@ -4,15 +4,9 @@
 </picture>
 
 <p align="center">
-  <a href="#install"><picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/button-install-dark.svg">
-    <img src="docs/brand/button-install-light.svg" alt="How to install" height="44">
-  </picture></a>
+  <a href="#install"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/brand/button-install-dark.svg"><img src="docs/brand/button-install-light.svg" alt="How to install" height="44"></picture></a>
   &nbsp;&nbsp;
-  <a href="#what-it-does"><picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/link-more-dark.svg">
-    <img src="docs/brand/link-more-light.svg" alt="See what it does" height="44">
-  </picture></a>
+  <a href="#what-it-does"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/brand/link-more-dark.svg"><img src="docs/brand/link-more-light.svg" alt="See what it does" height="44"></picture></a>
 </p>
 
 <br>
@@ -320,19 +314,13 @@ Images go through ImageIO, and audio and video through ffmpeg with the Mac's har
 rightform designs and builds digital solutions fitted to a specific need: websites, shops, automations and AI tools. Got a question, an idea, or a project of your own? Write to me.
 
 <p>
-  <a href="mailto:hej@rightform.pl"><picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/button-contact-dark.svg">
-    <img src="docs/brand/button-contact-light.svg" alt="Write to hej@rightform.pl" height="44">
-  </picture></a>
+  <a href="mailto:hej@rightform.pl"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/brand/button-contact-dark.svg"><img src="docs/brand/button-contact-light.svg" alt="Write to hej@rightform.pl" height="44"></picture></a>
 </p>
 
 <br>
 
 <p>
-  <a href="https://rightform.pl"><picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/rightform-logo-dark.png">
-    <img src="docs/brand/rightform-logo.png" alt="rightform" width="200">
-  </picture></a>
+  <a href="https://rightform.pl"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/brand/rightform-logo-dark.png"><img src="docs/brand/rightform-logo.png" alt="rightform" width="200"></picture></a>
 </p>
 
 [hej@rightform.pl](mailto:hej@rightform.pl) · [rightform.pl](https://rightform.pl)
