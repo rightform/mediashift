@@ -16,7 +16,8 @@ public enum SystemPreview {
 
     /// Renders with macOS's own Quick Look engine by running `/usr/bin/qlmanage -p -o <tempdir> <file>`. Throws ConversionError if no usable output or after a 60 second timeout. Must not show any window. Caller removes `folder`.
     public static func render(_ url: URL) async throws -> (rendering: Rendering, folder: URL) {
-        try await render(url, timeout: 60)
+        // Generous, because an older Intel Mac under load can take over a minute on one file.
+        try await render(url, timeout: 120)
     }
 
     static func render(_ url: URL, timeout: TimeInterval) async throws -> (rendering: Rendering, folder: URL) {
