@@ -43,7 +43,12 @@ jobs:
         run: make ffmpeg
 
       - name: Show what this machine can write
-        run: sips --formats | grep -i -E 'avif|heic' || true
+        run: |
+          sips --formats | grep -i -E 'avif|heic' || true
+          for encoder in h264_videotoolbox hevc_videotoolbox; do
+            echo "$encoder, as the app calls it:"
+            vendor/ffmpeg/bin/ffmpeg -hide_banner -nostdin -loglevel error -f lavfi -i testsrc2=size=320x240:rate=25:duration=1 -c:v "$encoder" -q:v 62 -allow_sw 1 -f null - && echo works || echo "does not start"
+          done
 
       - name: Run the tests
         run: make test

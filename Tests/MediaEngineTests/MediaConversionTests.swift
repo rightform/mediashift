@@ -347,7 +347,7 @@ struct VideoPair: Sendable, CustomTestStringConvertible {
         #expect(scratch.contents == ["silent.mp4"])
     }
 
-    @Test func outputCannotBeTheInput() async throws {
+    @Test(.enabled(if: videoEncoderAvailable)) func outputCannotBeTheInput() async throws {
         let scratch = try Scratch()
         defer { scratch.remove() }
         let input = scratch.file("clip.mp4")
@@ -418,7 +418,7 @@ struct VideoPair: Sendable, CustomTestStringConvertible {
         #expect(values.dropLast().allSatisfy { $0 < 1 })
     }
 
-    @Test func progressEndsAtOneForACopyToo() async throws {
+    @Test(.enabled(if: videoEncoderAvailable)) func progressEndsAtOneForACopyToo() async throws {
         let scratch = try Scratch()
         defer { scratch.remove() }
         let input = scratch.file("clip.mp4")
@@ -430,7 +430,7 @@ struct VideoPair: Sendable, CustomTestStringConvertible {
         #expect(log.values.last == 1)
     }
 
-    @Test func progressDoesNotReachOneWhenTheConversionFails() async throws {
+    @Test(.enabled(if: videoEncoderAvailable)) func progressDoesNotReachOneWhenTheConversionFails() async throws {
         let scratch = try Scratch()
         defer { scratch.remove() }
         let input = scratch.file("silent.mp4")

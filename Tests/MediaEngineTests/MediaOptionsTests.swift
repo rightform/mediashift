@@ -317,6 +317,19 @@ private func text(_ info: MediaInfo, to format: FileFormat, _ options: MediaOpti
         #expect(!message.contains("streams"))
     }
 
+    @Test func anEncoderThatGivesNothingSaysTheSame() {
+        let log = """
+        [vost#0:0/h264_videotoolbox @ 0x7f8] Could not open encoder before EOF
+        [out#0/mp4 @ 0x7f9] Nothing was written into output file, because at least one of its streams received no packets.
+        """
+        #expect(FFmpeg.failureMessage(from: log).contains("video encoder"))
+    }
+
+    @Test func noPacketsFromAnotherEncoderKeepsItsOwnReason() {
+        let log = "[out#0/webm @ 0x7f9] Nothing was written into output file, because at least one of its streams received no packets."
+        #expect(FFmpeg.failureMessage(from: log).hasPrefix("The conversion failed: Nothing was written"))
+    }
+
     @Test func otherFailuresStillShowTheirReason() {
         #expect(FFmpeg.failureMessage(from: "Invalid data found when processing input") == "The conversion failed: Invalid data found when processing input")
     }

@@ -91,7 +91,8 @@ struct FFmpeg: Sendable {
 
     static func failureMessage(from log: String) -> String {
         // The last line would only say that nothing came out. This says why, and what still works.
-        if log.contains("Cannot create compression session") {
+        let encoderGaveNothing = log.contains("_videotoolbox") && log.contains("received no packets")
+        if log.contains("Cannot create compression session") || encoderGaveNothing {
             return "This Mac could not start its video encoder. WebM does not need it, so try that instead."
         }
         guard let reason = lastMeaningfulLine(of: log) else { return "The conversion failed." }
