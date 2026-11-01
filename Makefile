@@ -9,7 +9,7 @@ ifneq ($(wildcard $(TESTING_PLUGINS)),)
 TEST_FLAGS := -Xswiftc -plugin-path -Xswiftc $(TESTING_PLUGINS)
 endif
 
-.PHONY: build test app ffmpeg clean
+.PHONY: build test app dmg ffmpeg clean
 
 build:
 	swift build --scratch-path "$(SCRATCH)"
@@ -22,6 +22,9 @@ ffmpeg:
 
 app:
 	scripts/build-app.sh
+
+dmg: app
+	scripts/build-dmg.sh
 
 clean:
 	rm -rf "$(SCRATCH)" "$(SCRATCH)"-arm64 "$(SCRATCH)"-x86_64
