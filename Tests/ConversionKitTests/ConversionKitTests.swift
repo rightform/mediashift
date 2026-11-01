@@ -313,3 +313,45 @@ func textSurvivesConversionToPDF(source format: FileFormat) async throws {
         try await Converter.run(.convert(.txt), on: scan, options: ConversionOptions(recognizesScans: false))
     }
 }
+
+// MARK: - What this Mac can write
+
+@Test func formatsThisMacCannotWriteAreNotOffered() {
+    let withoutAVIF: ConversionCatalog.WriteCheck = { $0 != .avif }
+
+    let fromPNG = ConversionCatalog.targets(for: .png, canWrite: withoutAVIF)
+    #expect(!fromPNG.contains(.avif))
+    #expect(fromPNG.contains(.heic))
+    #expect(fromPNG.contains(.jpeg))
+
+    // Video and documents have nothing to do with it.
+    #expect(ConversionCatalog.targets(for: .mp4, canWrite: withoutAVIF) == ConversionCatalog.targets(for: .mp4, canWrite: { _ in true }))
+    #expect(ConversionCatalog.targets(for: .docx, canWrite: withoutAVIF) == ConversionCatalog.targets(for: .docx, canWrite: { _ in true }))
+}
+
+@Test func anImageThisMacCannotWriteCanStillBeConvertedToSomethingElse() {
+    let withoutAVIF: ConversionCatalog.WriteCheck = { $0 != .avif }
+    let actions = ConversionCatalog.actions(for: .avif, canWrite: withoutAVIF)
+
+    #expect(actions.contains(.convert(.jpeg)))
+    #expect(!actions.contains(.compress))
+    #expect(!actions.contains(.stripMetadata))
+
+    #expect(ConversionCatalog.actions(for: .jpeg, canWrite: withoutAVIF).contains(.compress))
+    #expect(ConversionCatalog.actions(for: .jpeg, canWrite: withoutAVIF).contains(.stripMetadata))
+}
+
+@Test func whatIsOfferedReallyWorksOnThisMac() async throws {
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let source = folder.appendingPathComponent("picture.png")
+    try writeImage(to: source)
+
+    for target in [FileFormat.heic, .avif] {
+        let offered = ConversionCatalog.targets(for: .png).contains(target)
+        #expect(offered == ImageSupport.canWrite(target), "\(target.label)")
+        guard offered else { continue }
+        let result = try await Converter.run(.convert(target), on: source)
+        #expect(size(result.output) > 0, "\(target.label)")
+    }
+}

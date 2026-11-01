@@ -1,5 +1,6 @@
 import ConversionCore
 import Foundation
+import MediaEngine
 
 /// What can be done to a file.
 public enum ConversionAction: Hashable, Sendable {
@@ -18,14 +19,17 @@ public enum ConversionAction: Hashable, Sendable {
 }
 
 /// Which actions each format offers, most useful first. The wheel shows these in order.
+/// Only what this Mac can really do is offered, which `canWrite` decides.
 public enum ConversionCatalog {
+    public typealias WriteCheck = (FileFormat) -> Bool
+
     private static let imageTargets: [FileFormat] = [.jpeg, .png, .heic, .webp, .avif, .pdf, .tiff, .gif, .bmp]
     private static let videoTargets: [FileFormat] = [.mp4, .mov, .webm, .mkv, .m4v, .gif, .mp3, .m4a]
     private static let audioTargets: [FileFormat] = [.mp3, .m4a, .wav, .flac, .ogg, .opus, .aiff]
     private static let textTargets: [FileFormat] = [.pdf, .docx, .md, .html, .txt, .rtf, .odt, .epub, .pages, .pptx]
     private static let pageImageTargets: [FileFormat] = [.pdf, .png, .jpeg]
 
-    public static func targets(for format: FileFormat) -> [FileFormat] {
+    public static func targets(for format: FileFormat, canWrite: WriteCheck = ImageSupport.canWrite) -> [FileFormat] {
         let all: [FileFormat]
         switch format {
         case .txt, .md, .html, .rtf, .docx, .doc, .odt, .epub, .pages:
@@ -49,7 +53,7 @@ public enum ConversionCatalog {
         case .mp3, .m4a, .wav, .flac, .ogg, .opus, .aiff:
             all = audioTargets
         }
-        return all.filter { $0 != format }
+        return all.filter { $0 != format && canWrite($0) }
     }
 
     /// Every format something can be converted into.
@@ -59,24 +63,27 @@ public enum ConversionCatalog {
         }
     }
 
-    public static func canCompress(_ format: FileFormat) -> Bool {
+    /// An image is rewritten in its own format, so that format has to be writable here.
+    public static func canCompress(_ format: FileFormat, canWrite: WriteCheck = ImageSupport.canWrite) -> Bool {
         switch format.kind {
-        case .image, .video, .audio: true
+        case .image: canWrite(format)
+        case .video, .audio: true
         default: format == .pdf
         }
     }
 
-    public static func canStripMetadata(_ format: FileFormat) -> Bool {
+    public static func canStripMetadata(_ format: FileFormat, canWrite: WriteCheck = ImageSupport.canWrite) -> Bool {
         switch format.kind {
-        case .image, .video, .audio: true
+        case .image: canWrite(format)
+        case .video, .audio: true
         default: [.pdf, .docx, .xlsx, .pptx].contains(format)
         }
     }
 
-    public static func actions(for format: FileFormat) -> [ConversionAction] {
-        var actions = targets(for: format).map(ConversionAction.convert)
-        if canCompress(format) { actions.append(.compress) }
-        if canStripMetadata(format) { actions.append(.stripMetadata) }
+    public static func actions(for format: FileFormat, canWrite: WriteCheck = ImageSupport.canWrite) -> [ConversionAction] {
+        var actions = targets(for: format, canWrite: canWrite).map(ConversionAction.convert)
+        if canCompress(format, canWrite: canWrite) { actions.append(.compress) }
+        if canStripMetadata(format, canWrite: canWrite) { actions.append(.stripMetadata) }
         return actions
     }
 

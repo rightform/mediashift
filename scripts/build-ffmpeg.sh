@@ -1,17 +1,19 @@
 #!/usr/bin/env bash
 #
-# Builds a small, static, LGPL ffmpeg for Apple Silicon into vendor/ffmpeg.
+# Builds a small, static, LGPL ffmpeg for Apple Silicon and Intel into vendor/ffmpeg.
 #
 #   scripts/build-ffmpeg.sh            build, or do nothing if vendor/ffmpeg is current
 #   scripts/build-ffmpeg.sh --clean    throw away the work directory first
+#
+# FFMPEG_ARCHS="arm64" builds one architecture only, which is much quicker while developing.
 #
 # Result:
 #   vendor/ffmpeg/bin/ffmpeg           self contained except for system libraries
 #   vendor/ffmpeg/licenses/            license text and source pins of every component
 #
 # Every source tarball is pinned by version and SHA-256 below. A mismatch aborts the build.
-# The only build tool that is not part of macOS or the Command Line Tools is pkgconf,
-# which this script builds itself from its official tarball.
+# The only build tools that are not part of macOS or the Command Line Tools are pkgconf and
+# nasm, which this script builds itself from their official tarballs.
 #
 set -Eeuo pipefail
 
@@ -59,23 +61,31 @@ PKGCONF_VERSION=2.5.1
 PKGCONF_URL="https://distfiles.ariadne.space/pkgconf/pkgconf-${PKGCONF_VERSION}.tar.xz"
 PKGCONF_SHA256=cd05c9589b9f86ecf044c10a2269822bc9eb001eced2582cfffd658b0a50c243
 
+# Build tool only, never shipped. Assembles the fast x86 code paths of ffmpeg and libvpx.
+NASM_VERSION=3.02
+NASM_URL="https://www.nasm.us/pub/nasm/releasebuilds/${NASM_VERSION}/nasm-${NASM_VERSION}.tar.xz"
+NASM_SHA256=87336eba53b4acfe917424ab5d500d2b0054d9f5148d35c2273ccf2cfb712f0d
+
 # ---------------------------------------------------------------------------
 # Locations
 # ---------------------------------------------------------------------------
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT/scripts/app.env"
 OUT="$ROOT/vendor/ffmpeg"
 WORK="${FFMPEG_WORK_DIR:-$HOME/Library/Caches/MediaShift/ffmpeg-src}"
 DOWNLOADS="$WORK/downloads"
-BUILD="$WORK/build"
-PREFIX="$WORK/prefix"
 TOOLS="$WORK/tools"
-LOGS="$WORK/logs"
-STAMPS="$PREFIX/.stamps"
+SLICES="$WORK/slices"
 
-DEPLOYMENT_TARGET=26.0
+ARCHS="${FFMPEG_ARCHS:-arm64 x86_64}"
+NATIVE_ARCH="$(uname -m)"
 JOBS="$(sysctl -n hw.ncpu)"
 STEP="starting"
+
+# Build tools run on this machine. Each architecture then gets its own set, see use_arch.
+BUILD="$WORK/build/tools"
+LOGS="$WORK/logs/tools"
 
 say() { printf '==> %s\n' "$*"; }
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
@@ -98,9 +108,12 @@ trap on_error ERR
 
 preflight() {
     STEP="checking the machine"
-    [[ "$(uname -s)" == "Darwin" && "$(uname -m)" == "arm64" ]] || die "this build is for Apple Silicon Macs only"
-    local tool
-    for tool in curl shasum tar make perl otool strip codesign install; do
+    [[ "$(uname -s)" == "Darwin" ]] || die "this build is for Macs only"
+    local tool arch
+    for arch in $ARCHS; do
+        [[ "$arch" == "arm64" || "$arch" == "x86_64" ]] || die "unknown architecture: $arch"
+    done
+    for tool in curl shasum tar make perl otool strip codesign install lipo; do
         command -v "$tool" > /dev/null || die "missing tool: $tool"
     done
     # Fails with a clear message when the Xcode license is not accepted or no toolchain exists.
@@ -169,6 +182,28 @@ extract() {
 # Build helpers
 # ---------------------------------------------------------------------------
 
+# gnu_triple ARCH names an architecture the way configure scripts expect.
+gnu_triple() {
+    case "$1" in
+        arm64) echo aarch64-apple-darwin ;;
+        *) echo "$1-apple-darwin" ;;
+    esac
+}
+
+# use_arch ARCH points every build path and compiler flag at one architecture.
+use_arch() {
+    ARCH="$1"
+    BUILD="$WORK/build/$ARCH"
+    PREFIX="$WORK/prefix/$ARCH"
+    LOGS="$WORK/logs/$ARCH"
+    STAMPS="$PREFIX/.stamps"
+    export CFLAGS="-O2 -arch $ARCH"
+    export CPPFLAGS="-I$PREFIX/include"
+    export LDFLAGS="-arch $ARCH -L$PREFIX/lib"
+    export PKG_CONFIG_LIBDIR="$PREFIX/lib/pkgconfig"
+    say "Building for $ARCH"
+}
+
 # logged NAME COMMAND... runs a command with its output going to logs/NAME.log.
 logged() {
     local name="$1"
@@ -201,6 +236,7 @@ autotools() {
         "patch_$name"
     fi
     logged "$name" ./configure --prefix="$PREFIX" --disable-shared --enable-static \
+        --build="$(gnu_triple "$NATIVE_ARCH")" --host="$(gnu_triple "$ARCH")" \
         --disable-dependency-tracking "$@"
     logged "$name" make -j"$JOBS"
     logged "$name" make install
@@ -225,6 +261,22 @@ build_pkgconf() {
     cd "$ROOT"
 }
 
+build_nasm() {
+    if [[ -x "$TOOLS/bin/nasm" && "$("$TOOLS/bin/nasm" -v)" == *" $NASM_VERSION "* ]]; then
+        return
+    fi
+    fetch nasm
+    STEP="nasm build"
+    say "Building nasm $NASM_VERSION (build tool)"
+    rm -f "$LOGS/nasm.log"
+    extract nasm
+    cd "$SRC"
+    logged nasm ./configure --prefix="$TOOLS"
+    logged nasm make -j"$JOBS"
+    logged nasm make install
+    cd "$ROOT"
+}
+
 build_libvpx() {
     already_built libvpx && return
     fetch libvpx
@@ -233,7 +285,12 @@ build_libvpx() {
     rm -f "$LOGS/libvpx.log"
     extract libvpx
     cd "$SRC"
-    logged libvpx ./configure --prefix="$PREFIX" --target=arm64-darwin25-gcc \
+    local assembler=""
+    if [[ "$ARCH" == "x86_64" ]]; then
+        assembler="--as=nasm"
+    fi
+    # darwin24 is macOS 15, the oldest system this build has to run on.
+    logged libvpx ./configure --prefix="$PREFIX" --target="$ARCH-darwin24-gcc" $assembler \
         --enable-static --disable-shared --enable-pic \
         --enable-vp8 --enable-vp9 --enable-vp9-highbitdepth --enable-runtime-cpu-detect \
         --disable-examples --disable-tools --disable-docs --disable-unit-tests
@@ -277,7 +334,7 @@ build_lame() {
     # The export list names a symbol the code no longer defines, which the macOS linker rejects.
     sed -i '' '/lame_init_old/d' include/libmp3lame.sym
     # The bundled config.guess predates Apple Silicon, so name the machine explicitly.
-    logged lame ./configure --prefix="$PREFIX" --build=aarch64-apple-darwin --host=aarch64-apple-darwin \
+    logged lame ./configure --prefix="$PREFIX" --build="$(gnu_triple "$NATIVE_ARCH")" --host="$(gnu_triple "$ARCH")" \
         --disable-shared --enable-static --disable-dependency-tracking \
         --disable-frontend --disable-decoder --disable-gtktest
     logged lame make -j"$JOBS"
@@ -293,13 +350,17 @@ build_ffmpeg() {
     rm -f "$LOGS/ffmpeg.log"
     extract ffmpeg
     cd "$SRC"
+    local cross=""
+    if [[ "$ARCH" != "$NATIVE_ARCH" ]]; then
+        cross="--enable-cross-compile --target-os=darwin"
+    fi
     # No --enable-gpl and no --enable-nonfree, on purpose. --disable-autodetect keeps the
     # build from picking up any library that happens to be installed on this machine.
     logged ffmpeg ./configure \
         --prefix="$WORK/ffmpeg-install" \
-        --cc=clang --arch=arm64 \
+        --cc=clang --arch="$ARCH" $cross \
         --pkg-config="$TOOLS/bin/pkg-config" --pkg-config-flags=--static \
-        --extra-cflags="-I$PREFIX/include" --extra-ldflags="-L$PREFIX/lib" \
+        --extra-cflags="-arch $ARCH -I$PREFIX/include" --extra-ldflags="-arch $ARCH -L$PREFIX/lib" \
         --disable-gpl --disable-nonfree --disable-autodetect \
         --enable-static --disable-shared \
         --enable-zlib --enable-videotoolbox --enable-audiotoolbox \
@@ -307,13 +368,25 @@ build_ffmpeg() {
         --disable-ffplay --disable-ffprobe --disable-doc --disable-network --disable-debug
     logged ffmpeg make -j"$JOBS"
 
-    STEP="installing ffmpeg"
-    mkdir -p "$OUT/bin"
-    install -m 755 ffmpeg "$OUT/bin/ffmpeg"
-    strip -x "$OUT/bin/ffmpeg"
-    # Stripping invalidates the signature and Apple Silicon refuses to run unsigned code.
-    codesign --force --sign - "$OUT/bin/ffmpeg" > /dev/null 2>&1
+    STEP="keeping the $ARCH part of ffmpeg"
+    mkdir -p "$SLICES"
+    install -m 755 ffmpeg "$SLICES/ffmpeg-$ARCH"
+    strip -x "$SLICES/ffmpeg-$ARCH"
     cd "$ROOT"
+}
+
+# Joins the architectures into one file, which macOS picks from when it starts the program.
+combine_slices() {
+    STEP="combining the architectures"
+    local parts=() arch
+    for arch in $ARCHS; do
+        parts+=("$SLICES/ffmpeg-$arch")
+    done
+    mkdir -p "$OUT/bin"
+    lipo -create "${parts[@]}" -output "$OUT/bin/ffmpeg"
+    chmod 755 "$OUT/bin/ffmpeg"
+    # Joining drops the signatures and Apple Silicon refuses to run unsigned code.
+    codesign --force --sign - "$OUT/bin/ffmpeg" > /dev/null 2>&1
 }
 
 # ---------------------------------------------------------------------------
@@ -366,10 +439,24 @@ write_licenses() {
 # Verification
 # ---------------------------------------------------------------------------
 
+# The binary as one architecture, so that each part is tested on its own.
+slice() {
+    arch -"$ARCH" "$OUT/bin/ffmpeg" "$@"
+}
+
 verify_binary() {
-    STEP="verifying the binary"
+    local arch
+    for arch in $ARCHS; do
+        ARCH="$arch"
+        verify_slice
+    done
+    echo "Size: $(du -h "$OUT/bin/ffmpeg" | awk '{print $1}'), architectures: $(lipo -archs "$OUT/bin/ffmpeg")"
+}
+
+verify_slice() {
+    STEP="verifying the $ARCH part of the binary"
     local bin="$OUT/bin/ffmpeg" lib bad=0
-    say "Verifying $bin"
+    say "Verifying the $ARCH part of $bin"
 
     echo "Linked libraries:"
     while read -r lib; do
@@ -378,24 +465,30 @@ verify_binary() {
             /usr/lib/* | /System/Library/*) ;;
             *) echo "  ^ not a system library" >&2; bad=1 ;;
         esac
-    done < <(otool -L "$bin" | tail -n +2 | awk '{print $1}')
+    done < <(otool -L -arch "$ARCH" "$bin" | tail -n +2 | awk '{print $1}')
     [[ $bad -eq 0 ]] || die "the binary depends on libraries outside macOS"
 
+    # An Apple Silicon Mac runs the Intel part through Rosetta. Other combinations cannot run here.
+    if ! arch -"$ARCH" /usr/bin/true 2> /dev/null; then
+        echo "warning: this Mac cannot run the $ARCH part, so it was not tested."
+        return
+    fi
+
     local buildconf
-    buildconf="$("$bin" -hide_banner -buildconf 2>&1)"
+    buildconf="$(slice -hide_banner -buildconf 2>&1)"
     if grep -qE -e '--enable-(gpl|nonfree|version3)' <<< "$buildconf"; then
         die "the binary was configured with GPL or nonfree options"
     fi
 
     local license
     # The notice is hard wrapped, so join its first paragraph into one line.
-    license="$("$bin" -hide_banner -L 2>&1)"
+    license="$(slice -hide_banner -L 2>&1)"
     license="$(awk 'NF == 0 { exit } { printf "%s ", $0 }' <<< "$license")"
     echo "License: $license"
     grep -q 'GNU Lesser General Public' <<< "$license" || die "ffmpeg does not report the LGPL"
 
     local encoders encoder
-    encoders="$("$bin" -hide_banner -encoders 2>&1)"
+    encoders="$(slice -hide_banner -encoders 2>&1)"
     for encoder in libvpx libvpx-vp9 libwebp libwebp_anim libopus libvorbis libmp3lame \
         h264_videotoolbox hevc_videotoolbox aac_at; do
         grep -qE "[[:space:]]${encoder}[[:space:]]" <<< "$encoders" || die "encoder missing: $encoder"
@@ -404,23 +497,23 @@ verify_binary() {
     # A real encode through each software library.
     local scratch
     scratch="$(mktemp -d)"
-    "$bin" -hide_banner -loglevel error -f lavfi -i testsrc2=size=160x120:rate=10:duration=1 \
+    slice -hide_banner -loglevel error -f lavfi -i testsrc2=size=160x120:rate=10:duration=1 \
         -f lavfi -i sine=duration=1 -c:v libvpx-vp9 -c:a libopus "$scratch/a.webm" \
         || die "libvpx or libopus failed to encode"
-    "$bin" -hide_banner -loglevel error -f lavfi -i sine=duration=1 "$scratch/a.mp3" \
+    slice -hide_banner -loglevel error -f lavfi -i sine=duration=1 "$scratch/a.mp3" \
         || die "lame failed to encode"
-    "$bin" -hide_banner -loglevel error -f lavfi -i sine=duration=1 -c:a libvorbis "$scratch/a.ogg" \
+    slice -hide_banner -loglevel error -f lavfi -i sine=duration=1 -c:a libvorbis "$scratch/a.ogg" \
         || die "libvorbis failed to encode"
-    "$bin" -hide_banner -loglevel error -f lavfi -i testsrc2=size=160x120:rate=10:duration=1 -frames:v 1 \
+    slice -hide_banner -loglevel error -f lavfi -i testsrc2=size=160x120:rate=10:duration=1 -frames:v 1 \
         "$scratch/a.webp" || die "libwebp failed to encode"
-    "$bin" -hide_banner -loglevel error -f lavfi -i testsrc2=size=160x120:rate=10:duration=1 \
+    slice -hide_banner -loglevel error -f lavfi -i testsrc2=size=160x120:rate=10:duration=1 \
         -c:v h264_videotoolbox "$scratch/a.mp4" \
         || echo "warning: the VideoToolbox encoder did not run here. It needs a Mac with media hardware."
     rm -rf "$scratch"
 
     local version
-    version="$("$bin" -version 2>&1)"
-    echo "Size: $(du -h "$bin" | awk '{print $1}')  $(head -n1 <<< "$version")"
+    version="$(slice -version 2>&1)"
+    echo "$ARCH: $(head -n1 <<< "$version")"
 }
 
 # ---------------------------------------------------------------------------
@@ -429,7 +522,7 @@ verify_binary() {
 
 main() {
     if [[ "${1:-}" == "--clean" ]]; then
-        rm -rf "$BUILD" "$PREFIX" "$LOGS" "$OUT"
+        rm -rf "$WORK/build" "$WORK/prefix" "$WORK/logs" "$SLICES" "$OUT"
     elif [[ -n "${1:-}" ]]; then
         die "unknown option: $1"
     fi
@@ -438,7 +531,7 @@ main() {
 
     local pins_stamp="$OUT/.built-with"
     local pins
-    pins="$(grep -hE '^[A-Z]+_(VERSION|SHA256)=' "${BASH_SOURCE[0]}" | shasum -a 256 | awk '{print $1}')"
+    pins="$( { grep -hE '^[A-Z]+_(VERSION|SHA256)=' "${BASH_SOURCE[0]}"; echo "$ARCHS $MIN_MACOS"; } | shasum -a 256 | awk '{print $1}')"
     if [[ -x "$OUT/bin/ffmpeg" && -f "$pins_stamp" && "$(cat "$pins_stamp")" == "$pins" ]]; then
         say "vendor/ffmpeg is already current. Use --clean to rebuild."
         exit 0
@@ -448,22 +541,27 @@ main() {
 
     # Keep the build away from Homebrew and anything else on this machine.
     export PATH="$TOOLS/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-    export MACOSX_DEPLOYMENT_TARGET="$DEPLOYMENT_TARGET"
-    export CFLAGS="-O2 -arch arm64"
-    export CPPFLAGS="-I$PREFIX/include"
-    export LDFLAGS="-L$PREFIX/lib"
+    export MACOSX_DEPLOYMENT_TARGET="$MIN_MACOS"
+    export CC=clang
     export PKG_CONFIG="$TOOLS/bin/pkg-config"
-    export PKG_CONFIG_LIBDIR="$PREFIX/lib/pkgconfig"
     unset PKG_CONFIG_PATH
 
     build_pkgconf
-    build_libogg
-    build_libvorbis
-    build_opus
-    build_libvpx
-    build_libwebp
-    build_lame
-    build_ffmpeg
+    build_nasm
+
+    local arch
+    for arch in $ARCHS; do
+        use_arch "$arch"
+        build_libogg
+        build_libvorbis
+        build_opus
+        build_libvpx
+        build_libwebp
+        build_lame
+        build_ffmpeg
+    done
+
+    combine_slices
     write_licenses
     verify_binary
 

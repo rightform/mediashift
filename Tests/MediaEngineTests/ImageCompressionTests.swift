@@ -15,7 +15,7 @@ import Testing
         return url
     }
 
-    @Test("Higher levels make smaller files", arguments: [FileFormat.jpeg, .heic])
+    @Test("Higher levels make smaller files", arguments: [FileFormat.jpeg, .heic].filter(ImageSupport.canWrite))
     func levelsOrderBySize(format: FileFormat) async throws {
         let scratch = try Scratch()
         defer { scratch.remove() }
@@ -33,7 +33,7 @@ import Testing
         #expect(try #require(sizes[.light]) < fileSize(source))
     }
 
-    @Test(arguments: [FileFormat.jpeg, .heic, .avif, .tiff])
+    @Test(arguments: [FileFormat.jpeg, .heic, .avif, .tiff].filter(ImageSupport.canWrite))
     func targetSizeIsMetFromBelow(format: FileFormat) async throws {
         let scratch = try Scratch()
         defer { scratch.remove() }

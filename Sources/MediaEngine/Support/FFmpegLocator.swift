@@ -5,7 +5,7 @@ public enum FFmpegLocator {
     /// Search order: the `FFMPEG_PATH` environment variable, `bin/ffmpeg` in the app bundle's
     /// resources, the same place seen from the command line tool inside the app,
     /// `vendor/ffmpeg/bin/ffmpeg` walking up from the executable and from the current directory,
-    /// then `/opt/homebrew/bin/ffmpeg`.
+    /// then Homebrew's place on Apple Silicon and on Intel.
     public static func find() -> URL? {
         var candidates: [URL] = []
 
@@ -27,6 +27,7 @@ public enum FFmpegLocator {
             candidates.append(contentsOf: vendorCandidates(walkingUpFrom: start))
         }
         candidates.append(URL(fileURLWithPath: "/opt/homebrew/bin/ffmpeg"))
+        candidates.append(URL(fileURLWithPath: "/usr/local/bin/ffmpeg"))
 
         return candidates.first(where: isRunnable)
     }

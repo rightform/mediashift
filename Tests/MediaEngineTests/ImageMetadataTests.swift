@@ -64,7 +64,7 @@ import Testing
         #expect(!ImageMetadata.isClean(try Data(contentsOf: photo)))
     }
 
-    @Test(arguments: [FileFormat.jpeg, .tiff, .heic, .png])
+    @Test(arguments: [FileFormat.jpeg, .tiff, .heic, .png].filter(ImageSupport.canWrite))
     func stripRemovesEverythingAndKeepsThePictureUpright(format: FileFormat) async throws {
         let scratch = try Scratch()
         defer { scratch.remove() }

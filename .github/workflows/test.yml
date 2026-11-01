@@ -1,0 +1,62 @@
+# Runs the tests where this project's own machine cannot: on macOS 15, the oldest system the
+# app supports, and on a real Intel processor. Also saves pictures of the interface there,
+# because macOS 15 draws it without Liquid Glass.
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: macOS 15, ${{ matrix.name }}
+    # A branch of this repository is already tested by its push, so only forks need the second trigger.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Apple Silicon
+            runner: macos-15
+            arch: arm64
+          - name: Intel
+            runner: macos-15-intel
+            arch: x86_64
+    env:
+      # The code refers to Liquid Glass behind an availability check, which takes the macOS 26 SDK.
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+      FFMPEG_ARCHS: ${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Restore ffmpeg
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: vendor/ffmpeg
+          key: ffmpeg-${{ matrix.arch }}-${{ hashFiles('scripts/build-ffmpeg.sh', 'scripts/app.env') }}
+
+      - name: Build ffmpeg
+        run: make ffmpeg
+
+      - name: Show what this machine can write
+        run: sips --formats | grep -i -E 'avif|heic' || true
+
+      - name: Run the tests
+        run: make test
+
+      - name: Picture the interface
+        if: always()
+        continue-on-error: true
+        run: scripts/snapshots.sh "$RUNNER_TEMP/snapshots"
+
+      - name: Keep the pictures
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: interface-${{ matrix.arch }}
+          path: ${{ runner.temp }}/snapshots
+          if-no-files-found: warn

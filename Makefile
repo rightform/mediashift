@@ -24,4 +24,4 @@ app:
 	scripts/build-app.sh
 
 clean:
-	rm -rf "$(SCRATCH)"
+	rm -rf "$(SCRATCH)" "$(SCRATCH)"-arm64 "$(SCRATCH)"-x86_64

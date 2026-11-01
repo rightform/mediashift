@@ -19,7 +19,8 @@ final class ToastController {
     }
 
     func show() {
-        let size = NSSize(width: 320, height: 66)
+        // The note itself is 320 by 66. The rest is room for its shadow.
+        let size = NSSize(width: 344, height: 90)
         var origin = NSPoint(x: location.x - size.width / 2, y: location.y - size.height / 2)
         if let screen = NSScreen.screens.first(where: { $0.frame.contains(location) }) ?? NSScreen.main {
             let bounds = screen.visibleFrame
@@ -103,8 +104,9 @@ private struct ToastView: View {
             .contentShape(RoundedRectangle(cornerRadius: 18))
         }
         .buttonStyle(.plain)
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 18))
+        .floatingSurface(in: RoundedRectangle(cornerRadius: 18))
         .accessibilityLabel("\(title). \(subtitle)")
+        .padding(12)
     }
 
     private var isRunning: Bool {

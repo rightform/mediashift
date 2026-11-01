@@ -66,7 +66,7 @@ mediashift photo.jpg --strip-metadata
 
 ## Building
 
-Requires macOS 26 or later on Apple Silicon, with Xcode or just the Command Line Tools.
+The app runs on macOS 15 or later, on Apple Silicon and Intel. Building it takes the macOS 26 SDK or newer, from Xcode or just the Command Line Tools.
 
 ```bash
 make ffmpeg
@@ -81,6 +81,8 @@ make app
 ```
 
 `make ffmpeg` builds the media engine from pinned, verified sources and is needed once. Without it, the tests that depend on it are skipped. `make app` prints the location of the finished app.
+
+Both build for Apple Silicon and Intel in one go. `FFMPEG_ARCHS=arm64 make ffmpeg` and `APP_ARCHS=arm64 make app` build one architecture only, which is much quicker while developing.
 
 ## How it is built
 
@@ -97,7 +99,7 @@ DocumentEngine  OfficeFormats  MediaEngine
 
 Documents do not convert to each other directly. Every reader produces a `RichDocument`, and every writer consumes one, so a new format means one reader or one writer rather than a converter for every other format. PDFs of Office and iWork files are the exception: they come from the system's own Quick Look renderer, which knows their fonts and layout, with the shared model as a fallback.
 
-Images go through ImageIO, and audio and video through ffmpeg with the Apple Silicon hardware encoders.
+Images go through ImageIO, and audio and video through ffmpeg with the Mac's hardware encoders.
 
 ## Limits worth knowing
 
@@ -106,6 +108,9 @@ Images go through ImageIO, and audio and video through ffmpeg with the Apple Sil
 - PDF to text formats recovers text and headings, not layout.
 - The first text recognition after installing takes about 25 seconds while macOS prepares its model. After that it is immediate.
 - Written Pages files hold text and heading styles, so images and tables become text.
+- HEIC and AVIF are offered only where macOS can write them, which depends on the system and the chip. AVIF may be missing on older systems and on Intel.
+- Intel support is new and less tested than Apple Silicon. Video encoding on Intel Macs is slower too.
+- The wheel uses Liquid Glass on macOS 26 and later, and a system material on macOS 15.
 - The app is not notarized yet, so macOS asks for confirmation on first launch: open it, then allow it under System Settings, Privacy & Security.
 
 ## License

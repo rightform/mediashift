@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "MediaShift",
-    platforms: [.macOS(.v26)],
+    platforms: [.macOS(.v15)],
     products: [
         .library(name: "ConversionKit", targets: ["ConversionKit"]),
         .executable(name: "mediashift", targets: ["mediashift"]),

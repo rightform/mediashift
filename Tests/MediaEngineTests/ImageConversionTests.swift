@@ -12,7 +12,7 @@ struct FormatPair: Sendable, CustomTestStringConvertible {
 
     var testDescription: String { "\(from.rawValue) to \(to.rawValue)" }
 
-    static let imageIOFormats: [FileFormat] = [.jpeg, .png, .gif, .tiff, .heic, .avif, .bmp]
+    static let imageIOFormats: [FileFormat] = [.jpeg, .png, .gif, .tiff, .heic, .avif, .bmp].filter(ImageSupport.canWrite)
 
     /// Every ordered pair of formats ImageIO can both read and write.
     static let withoutWebP: [FormatPair] = imageIOFormats.flatMap { from in
@@ -176,7 +176,7 @@ struct FormatPair: Sendable, CustomTestStringConvertible {
         let input = scratch.file("p3.png")
         try await ImageFixture.write(ImageFixture.make(colorSpace: displayP3), as: .png, to: input)
 
-        for format in [FileFormat.jpeg, .tiff, .heic] {
+        for format in [FileFormat.jpeg, .tiff, .heic] where ImageSupport.canWrite(format) {
             let output = scratch.file("p3.\(format.fileExtension)")
             try await ImageConverter.convert(input, to: output, format: format)
             let profile = ImageFixture.properties(of: output)[kCGImagePropertyProfileName] as? String
@@ -184,7 +184,8 @@ struct FormatPair: Sendable, CustomTestStringConvertible {
         }
     }
 
-    @Test func exifIsKeptWhenAskedAndGoneWhenNot() async throws {
+    @Test(.enabled(if: ImageSupport.canWrite(.heic)))
+    func exifIsKeptWhenAskedAndGoneWhenNot() async throws {
         let scratch = try Scratch()
         defer { scratch.remove() }
         let input = scratch.file("camera.jpg")
@@ -258,5 +259,29 @@ struct FormatPair: Sendable, CustomTestStringConvertible {
         await #expect(throws: ConversionError.self) {
             try await ImageConverter.convert(input, to: scratch.file("a.pdf"), format: .pdf)
         }
+    }
+}
+
+@Suite struct ImageSupportTests {
+    @Test(arguments: [FileFormat.jpeg, .png, .gif, .tiff, .bmp])
+    func theBasicsAreWritableEverywhere(format: FileFormat) {
+        #expect(ImageSupport.canWrite(format))
+    }
+
+    @Test func webPDoesNotDependOnTheSystem() {
+        // It goes through ffmpeg, not ImageIO.
+        #expect(ImageSupport.canWrite(.webp))
+    }
+
+    @Test(arguments: [FileFormat.mp4, .mp3, .pdf, .docx])
+    func otherKindsOfFileAreNotThisChecksConcern(format: FileFormat) {
+        #expect(ImageSupport.canWrite(format))
+    }
+
+    @Test(arguments: [FileFormat.heic, .avif])
+    func theAnswerMatchesWhatImageIOReports(format: FileFormat) throws {
+        let types = CGImageDestinationCopyTypeIdentifiers() as? [String] ?? []
+        let identifier = try #require(format.imageType?.identifier)
+        #expect(ImageSupport.canWrite(format) == types.contains(identifier))
     }
 }

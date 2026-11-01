@@ -2,6 +2,17 @@ import ConversionCore
 import ImageIO
 import UniformTypeIdentifiers
 
+/// What this Mac can write. ImageIO's encoders differ between systems and chips, so HEIC and
+/// AVIF in particular cannot be assumed. Reading is not affected.
+public enum ImageSupport {
+    private static let writableTypes = Set(CGImageDestinationCopyTypeIdentifiers() as? [String] ?? [])
+
+    public static func canWrite(_ format: FileFormat) -> Bool {
+        guard format.imageIOCanWrite else { return true }
+        return format.imageType.map { writableTypes.contains($0.identifier) } ?? false
+    }
+}
+
 extension FileFormat {
     /// The type ImageIO knows this format by.
     var imageType: UTType? {

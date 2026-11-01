@@ -2,15 +2,13 @@ import AppKit
 import ConversionKit
 import SwiftUI
 
-/// The signature of the app: formats ring the cursor mid-drag. Glass belongs here because
-/// the wheel floats above whatever the person is working on, and only for a moment.
+/// The signature of the app: formats ring the cursor mid-drag.
 struct WheelView: View {
     let model: WheelModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        // No spacing: the chips are meant to stay separate shapes, never to melt together.
-        GlassEffectContainer(spacing: 0) {
+        FloatingGroup {
             ZStack {
                 hub
                 ForEach(Array(model.actions.enumerated()), id: \.offset) { index, action in
@@ -44,7 +42,7 @@ struct WheelView: View {
         }
         .frame(width: WheelModel.hubTextWidth)
         .frame(width: WheelModel.hubRadius * 2, height: WheelModel.hubRadius * 2)
-        .glassEffect(.regular, in: Circle())
+        .floatingSurface(in: Circle())
     }
 
     private func chip(_ action: ConversionAction, index: Int) -> some View {
@@ -63,9 +61,9 @@ struct WheelView: View {
         }
         .foregroundStyle(isHighlighted ? Color.white : Color.primary)
         .frame(width: model.chipWidths[index], height: WheelModel.chipHeight)
-        // Solid rather than tinted glass, so the target stands out over any wallpaper.
+        // Solid rather than tinted, so the target stands out over any wallpaper.
         .background(isHighlighted ? Color.accentColor : .clear, in: Capsule())
-        .glassEffect(isHighlighted ? .identity : .regular, in: Capsule())
+        .floatingSurface(in: Capsule(), isSolid: isHighlighted)
         .scaleEffect(isHighlighted && !reduceMotion ? 1.1 : 1)
         .offset(model.isVisible || reduceMotion ? offset : .zero)
         .animation(reduceMotion ? nil : .spring(duration: 0.16, bounce: 0.2), value: isHighlighted)
