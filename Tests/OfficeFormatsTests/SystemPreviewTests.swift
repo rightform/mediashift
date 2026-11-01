@@ -154,6 +154,42 @@ struct SystemPreviewTests {
         }
     }
 
+    @Test func aStuckPreviewGetsASecondChance() async throws {
+        var attempts = 0
+        let result: String = try await SystemPreview.withSecondChance {
+            attempts += 1
+            throw SystemPreview.tookTooLong
+        } second: {
+            attempts += 1
+            return "rendered"
+        }
+        #expect(result == "rendered")
+        #expect(attempts == 2)
+    }
+
+    @Test func aSecondChanceIsOnlyForTakingTooLong() async {
+        var attempts = 0
+        await #expect(throws: ConversionError("macOS could not preview this file.")) {
+            try await SystemPreview.withSecondChance {
+                attempts += 1
+                throw ConversionError("macOS could not preview this file.")
+            } second: {
+                attempts += 1
+            }
+        }
+        #expect(attempts == 1)
+    }
+
+    @Test func tookTooLongTwiceIsReported() async {
+        await #expect(throws: SystemPreview.tookTooLong) {
+            try await SystemPreview.withSecondChance {
+                throw SystemPreview.tookTooLong
+            } second: {
+                throw SystemPreview.tookTooLong
+            }
+        }
+    }
+
     @Test func rendersAWordDocumentAsHTML() async throws {
         let folder = try TemporaryFolder()
         let url = folder.file("note.docx")

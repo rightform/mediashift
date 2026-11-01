@@ -14,10 +14,24 @@ public enum SystemPreview {
         case html(index: URL)
     }
 
-    /// Renders with macOS's own Quick Look engine by running `/usr/bin/qlmanage -p -o <tempdir> <file>`. Throws ConversionError if no usable output or after a 60 second timeout. Must not show any window. Caller removes `folder`.
+    static let tookTooLong = ConversionError("macOS took too long to preview this file.")
+
+    /// Renders with macOS's own Quick Look engine by running `/usr/bin/qlmanage -p -o <tempdir> <file>`. Throws ConversionError if no usable output, or when it takes too long twice. Must not show any window. Caller removes `folder`.
     public static func render(_ url: URL) async throws -> (rendering: Rendering, folder: URL) {
-        // Generous, because an older Intel Mac under load can take over a minute on one file.
-        try await render(url, timeout: 120)
+        try await withSecondChance(
+            first: { try await render(url, timeout: 60) },
+            second: { try await render(url, timeout: 120) }
+        )
+    }
+
+    /// qlmanage is a debugging tool, and now and then hangs with no lasting cause. That should not
+    /// fail a file, so a stuck run is stopped and the next one gets longer, for a slow Mac's sake.
+    static func withSecondChance<Result>(first: () async throws -> Result, second: () async throws -> Result) async throws -> Result {
+        do {
+            return try await first()
+        } catch let error as ConversionError where error == tookTooLong {
+            return try await second()
+        }
     }
 
     static func render(_ url: URL, timeout: TimeInterval) async throws -> (rendering: Rendering, folder: URL) {
@@ -169,7 +183,7 @@ private final class QuickLookProcess: @unchecked Sendable {
                     let didTimeOut = timedOut || Date() >= deadline
                     lock.unlock()
                     if didTimeOut {
-                        continuation.resume(throwing: ConversionError("macOS took too long to preview this file."))
+                        continuation.resume(throwing: SystemPreview.tookTooLong)
                     } else {
                         continuation.resume()
                     }
