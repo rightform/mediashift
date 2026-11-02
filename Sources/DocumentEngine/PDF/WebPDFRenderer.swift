@@ -152,14 +152,23 @@ public final class WebPDFRenderer: NSObject {
             });
 
             const headHeight = head ? height(head) : 0;
-            let room = usable - used - (top(body) - top(block));
+            // Above the first rows: the heading tied to the table, its caption and its header.
+            const firstHead = top(body) - top(block);
+            let room = usable - used - firstHead;
             let current = [];
             const pages = [current];
             for (const group of groups) {
               const needed = group.reduce((sum, row) => sum + height(row), 0);
               if (needed > room) {
-                if (current.length) { current = []; pages.push(current); }
-                room = usable - headHeight;
+                if (current.length) {
+                  current = [];
+                  pages.push(current);
+                  room = usable - headHeight;
+                } else {
+                  // The first part moves to a new page with its heading, so it has to fit
+                  // there with the heading. Some WebKit versions split a taller block.
+                  room = usable - firstHead;
+                }
               }
               current.push(...group);
               room -= needed;

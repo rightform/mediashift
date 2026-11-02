@@ -440,7 +440,7 @@ private func words(_ text: String) -> [String] {
     let long = ConversionCore.Table(rows: [[TableCell(text: "A")]] + (1...60).map { [TableCell(text: "Wiersz\($0)")] }, hasHeaderRow: true)
     let short = ConversionCore.Table(rows: [[TableCell(text: "A")]] + (1...8).map { [TableCell(text: "Wiersz\($0)")] }, hasHeaderRow: true)
     for table in [long, short] {
-        for count in 8...13 {
+        for count in 4...18 {
             let blocks = Array(repeating: paragraph, count: count) + [.heading(level: 2, content: [.text("Nagłówektabeli")]), .table(table)]
             let pages = try await pageTexts(of: RichDocument(blocks: blocks))
             let heading = pages.firstIndex { words($0).contains("Nagłówektabeli") }
