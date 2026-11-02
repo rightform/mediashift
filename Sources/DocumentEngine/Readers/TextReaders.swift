@@ -43,11 +43,11 @@ public enum MarkdownReader {
         if let front { lines.removeFirst(front.bodyStart) }
         let notes = Footnotes(takingDefinitionsFrom: &lines)
         let source = parsed(lines.joined(separator: "\n"))
-        let blocks = source.children.flatMap { blocks(from: $0, lines: lines, baseURL: baseURL) }
+        let content = source.children.flatMap { blocks(from: $0, lines: lines, baseURL: baseURL) }
         return RichDocument(
             title: front?.title,
             author: front?.author,
-            blocks: notes.isEmpty ? blocks : notes.applied(to: blocks, baseURL: baseURL)
+            blocks: notes.isEmpty ? content : notes.applied(to: content, baseURL: baseURL)
         )
     }
 
@@ -86,12 +86,12 @@ public enum MarkdownReader {
     }
 
     private static func items(from item: ListItem, lines: [String], baseURL: URL?) -> [Block] {
-        var blocks = item.children.flatMap { blocks(from: $0, lines: lines, baseURL: baseURL) }
+        var content = item.children.flatMap { blocks(from: $0, lines: lines, baseURL: baseURL) }
         // A task keeps its box as a character, which every format can show.
-        if let checkbox = item.checkbox, case .paragraph(let content, let alignment)? = blocks.first {
-            blocks[0] = .paragraph(content: [.text(checkbox == .checked ? "☑ " : "☐ ")] + content, alignment: alignment)
+        if let checkbox = item.checkbox, case .paragraph(let text, let alignment)? = content.first {
+            content[0] = .paragraph(content: [.text(checkbox == .checked ? "☑ " : "☐ ")] + text, alignment: alignment)
         }
-        return blocks
+        return content
     }
 
     private static func tableBlock(from table: Markdown.Table, baseURL: URL?) -> ConversionCore.Table {
