@@ -1,0 +1,31 @@
+{
+  "name": "@rightform/mediashift",
+  "version": "0.1.0",
+  "description": "Installs MediaShift, a file converter that lives in the Mac menu bar.",
+  "keywords": ["macos", "converter", "pdf", "docx", "video", "audio", "images", "menu bar"],
+  "homepage": "https://github.com/rightform/mediashift#readme",
+  "bugs": "https://github.com/rightform/mediashift/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rightform/mediashift.git",
+    "directory": "npm"
+  },
+  "license": "MIT",
+  "author": "rightform <hej@rightform.pl> (https://rightform.pl)",
+  "bin": {
+    "mediashift-install": "install.js"
+  },
+  "files": [
+    "install.js",
+    "install.sh"
+  ],
+  "os": [
+    "darwin"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "prepack": "cp ../install.sh install.sh"
+  }
+}

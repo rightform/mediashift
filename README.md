@@ -57,19 +57,33 @@ You need a Mac with **macOS 15 or later**, with Apple Silicon or Intel. To check
 
 For almost everyone. No coding, and no Terminal.
 
-> **Not available yet.** The first download will appear on the [Releases page](https://github.com/rightform/mediashift/releases) once Apple has checked the app, a step called notarization. Until then, build it yourself below.
+> **Not available yet.** The first download will appear on the [Releases page](https://github.com/rightform/mediashift/releases) once Apple has checked the app, a step called notarization. Until then, use the one line below.
 
 1. On the [Releases page](https://github.com/rightform/mediashift/releases), under **Assets** of the newest version, click the file that ends in `.dmg`.
 2. Open the downloaded file and drag **MediaShift** onto **Applications**.
 3. Close the window, and in the Finder sidebar click the eject symbol next to **MediaShift**. You can now delete the `.dmg` file.
 4. Open **MediaShift** from your Applications folder. If macOS asks whether you are sure, click **Open**.
 
-### Build it yourself
+### Install with one line
 
-This works today, and you do not need to know how to code. You paste a few lines into Terminal, an app that comes with every Mac, and wait. On an M4 MacBook the building took about 6 minutes, and it takes longer on older Macs. It uses about 2 GB of disk space, which you can get back afterwards.
+This works today, and you do not need to know how to code. Open **Terminal**, an app that comes with every Mac: press Command and Space together, type `Terminal` and press Return. Then paste this line and press Return.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/rightform/mediashift/main/install.sh | zsh
+```
+
+It checks your Mac, installs Apple's free developer tools if they are missing (a window asks you to click **Install**), builds MediaShift and puts it in your Applications folder. On an M4 MacBook the first time took about 6 minutes, and it takes longer on older Macs. It uses about 2 GB of disk space, which you can get back afterwards. Running the same line again updates MediaShift in about a minute. Once a release is published, the line downloads the finished app instead, checks it against its SHA-256 checksum and installs it in seconds.
+
+If you have Node.js, this does the same:
+
+```bash
+npx @rightform/mediashift
+```
+
+To see what the line does before you run it, read [install.sh](install.sh).
 
 <details>
-<summary><b>Show the steps</b></summary>
+<summary><b>Prefer to type each step yourself</b></summary>
 
 <br>
 
@@ -143,7 +157,7 @@ Your menu bar may be full. On a MacBook with a notch, icons that do not fit are 
 
 <br>
 
-macOS shows this for a downloaded copy that Apple has not checked yet. It stops once downloads are notarized, and it never appears for a copy you built yourself. Only continue if the copy came from this project's [Releases page](https://github.com/rightform/mediashift/releases).
+macOS shows this for a downloaded copy that Apple has not checked yet. It stops once downloads are notarized, and it never appears for a copy installed with the one line or built yourself. Only continue if the copy came from this project's [Releases page](https://github.com/rightform/mediashift/releases).
 
 1. Click **Done** in the message. Do not move the app to the Trash.
 2. Open System Settings, then **Privacy & Security**, and scroll down to the **Security** section.
@@ -158,9 +172,9 @@ If the button is not there, try opening the app once more and look again. The ex
 
 <br>
 
-**To update,** quit MediaShift by clicking its icon, then the **...** button, then **Quit**. Then install the new version the same way, and your settings stay as they are. If you built it yourself, go into the `mediashift` folder in Terminal, run `git pull`, and repeat steps 4 and 5.
+**To update,** quit MediaShift by clicking its icon, then the **...** button, then **Quit**. Then install the new version the same way, and your settings stay as they are. If you installed it with the one line, run the line again: it closes MediaShift by itself. If you typed each step yourself, go into the `mediashift` folder in Terminal, run `git pull`, and repeat steps 4 and 5.
 
-**To remove it,** turn off **Open at login** if you turned it on, quit MediaShift, and drag it from your Applications folder to the Trash. If you built it yourself, you can also delete the `mediashift` folder in your home folder, and get the disk space back with this line:
+**To remove it,** turn off **Open at login** if you turned it on, quit MediaShift, and drag it from your Applications folder to the Trash. If you typed each step yourself, you can also delete the `mediashift` folder in your home folder. If you built it either way, get the disk space back with this line:
 
 ```bash
 rm -rf ~/Library/Caches/MediaShift

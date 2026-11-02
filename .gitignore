@@ -5,3 +5,5 @@ dist/
 *.xcodeproj
 DerivedData/
 .DS_Store
+npm/install.sh
+npm/*.tgz
