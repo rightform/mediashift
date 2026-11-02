@@ -4,6 +4,8 @@ import Foundation
 /// Message types the Pages code cares about. iWork's protobuf schema is not public, these and
 /// the field numbers below come from reading real files.
 enum IWAType {
+    static let numbersDocument: UInt64 = 1
+    static let numbersSheet: UInt64 = 2
     static let documentRoot: UInt64 = 10000
     static let textStorage: UInt64 = 2001
     static let characterStyle: UInt64 = 2021

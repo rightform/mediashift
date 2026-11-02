@@ -220,6 +220,26 @@ import Testing
         #expect(abs(size.width - 72) < 1 && abs(size.height - 144) < 1)
     }
 
+    /// A multi-page TIFF is a scanned document, so every page becomes a page.
+    @Test func everyPageOfATIFFReachesThePDF() async throws {
+        let scratch = try Scratch()
+        defer { scratch.remove() }
+        let scan = scratch.file("scan.tiff")
+        let destination = try #require(CGImageDestinationCreateWithURL(scan as CFURL, "public.tiff" as CFString, 3, nil))
+        for width in [100, 200, 300] {
+            CGImageDestinationAddImage(destination, ImageFixture.make(width: width, height: 150), nil)
+        }
+        #expect(CGImageDestinationFinalize(destination))
+        let output = scratch.file("scan.pdf")
+
+        try await ImageConverter.makePDF(from: [scan], to: output)
+
+        let document = try #require(CGPDFDocument(output as CFURL))
+        #expect(document.numberOfPages == 3)
+        let widths = (1...3).compactMap { document.page(at: $0)?.getBoxRect(.mediaBox).width }
+        #expect(widths.map { Int($0.rounded()) } == [100, 200, 300])
+    }
+
     @Test func nothingToDoAndUnreadableInputsAreErrors() async throws {
         let scratch = try Scratch()
         defer { scratch.remove() }

@@ -79,6 +79,12 @@ struct FormatPair: Sendable, CustomTestStringConvertible {
         try await checkOrientationIsApplied(format: .webp)
     }
 
+    /// ImageIO writes AVIF without the orientation tag, so a kept tag would leave the photo on its side.
+    @Test(.enabled(if: ImageSupport.canWrite(.avif)))
+    func orientationIsAppliedForAVIF() async throws {
+        try await checkOrientationIsApplied(format: .avif)
+    }
+
     private func checkOrientationIsApplied(format: FileFormat) async throws {
         let scratch = try Scratch()
         defer { scratch.remove() }

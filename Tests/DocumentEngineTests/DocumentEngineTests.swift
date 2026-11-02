@@ -126,6 +126,343 @@ private func containsList(_ blocks: [Block]) -> Bool {
     #expect(document.plainText == "Alt text")
 }
 
+// MARK: - Markdown front matter
+
+@Test(arguments: [
+    "---\ntitle: Raport\nauthor: Ala Kot\n---\n\nTreść",
+    "---\ntitle: \"Raport\"\nauthor: 'Ala Kot'\n---\nTreść",
+    "---\nTitle: Raport # do zmiany\nAuthor: Ala Kot\n---\nTreść",
+    "---\r\ntitle: Raport\r\nauthor: Ala Kot\r\n---\r\n\r\nTreść",
+    "---\ntitle: Raport\nauthor: Ala Kot\n...\nTreść",
+    "\n\n---  \ntitle: Raport\nauthor: Ala Kot\n---  \nTreść",
+    "---\ntitle: Raport\nauthors:\n  - Ala Kot\n---\nTreść",
+    "---\ntitle: Raport\nauthor: [Ala Kot]\n---\nTreść",
+])
+func markdownFrontMatterBecomesDocumentData(source: String) {
+    let document = MarkdownReader.parse(source)
+    #expect(document.title == "Raport")
+    #expect(document.author == "Ala Kot")
+    #expect(document.plainText == "Treść")
+}
+
+@Test func markdownFrontMatterCanHoldMoreThanItUses() {
+    let source = """
+        ---
+        # Tokens for the design
+        name: Projekt
+        tags: [a, b]
+        colors:
+          primary: "#b4552f"
+          nested:
+            - one
+            - two
+        authors:
+          - Ala Kot
+          - Ola Pies
+        description: |
+          Tekst na kilka
+          linii.
+        ---
+
+        # Nagłówek
+
+        Treść
+        """
+    let document = MarkdownReader.parse(source)
+    #expect(document.title == nil)
+    #expect(document.author == "Ala Kot, Ola Pies")
+    #expect(document.inferredTitle == "Nagłówek")
+    #expect(document.plainText == "Nagłówek\n\nTreść")
+}
+
+@Test func markdownFrontMatterCanBeEmpty() {
+    let document = MarkdownReader.parse("---\n---\nTreść")
+    #expect(document.blocks == [.paragraph(content: [.text("Treść")])])
+}
+
+@Test func markdownTableAfterFrontMatterIsStillRepaired() throws {
+    let document = MarkdownReader.parse("---\ntitle: Raport\n---\n\nWstęp\n\n| A | B |\n|---|\n| 1 | 2 |")
+    #expect(document.blocks.first?.plainText == "Wstęp")
+    #expect(try texts(#require(containsTable(document.blocks))) == [["A", "B"], ["1", "2"]])
+}
+
+@Test func htmlShowsFrontMatterOnlyAsPageData() {
+    let rendered = HTMLWriter.render(MarkdownReader.parse("---\ntitle: Raport roczny\nauthor: Ala Kot\n---\n\nTreść"))
+    #expect(rendered.contains("<title>Raport roczny</title>"))
+    #expect(rendered.contains("<meta name=\"author\" content=\"Ala Kot\">"))
+    #expect(!rendered.contains("<hr>"))
+    #expect(!rendered.contains("title:"))
+}
+
+@Test(arguments: [
+    "---\nNagłówek\n---\nTreść",
+    "---\n\nTreść między liniami\n\n---\n",
+    "---\ntitle: Bez zamknięcia\n\nTreść",
+    "Treść\n\n---\ntitle: W środku\n---\n",
+    "----\ntitle: Za długa linia\n----\nTreść",
+    "---\nhttps://example.com\n---\nTreść",
+    "---\n\n---\nTreść",
+])
+func markdownRulesAreNotMistakenForFrontMatter(source: String) {
+    let document = MarkdownReader.parse(source)
+    #expect(document.title == nil)
+    #expect(document.blocks.contains { if case .rule = $0 { true } else if case .heading = $0 { true } else { false } })
+}
+
+// MARK: - Markdown tables
+
+private func texts(_ table: ConversionCore.Table) -> [[String]] {
+    table.rows.map { $0.map(\.plainText) }
+}
+
+@Test(arguments: [
+    "| A | B | C |\n|---|---|\n| 1 | 2 | 3 |",
+    "| A | B | C |\n|---|---|---|---|\n| 1 | 2 | 3 |",
+    "| A | B | C |\n| — | — | — |\n| 1 | 2 | 3 |",
+    "| A | B | C |\n|–––|–––|–––|\n| 1 | 2 | 3 |",
+    "| A | B | C |\n|\u{A0}---\u{A0}|\u{A0}---\u{A0}|\u{A0}---\u{A0}|\n| 1 | 2 | 3 |",
+    "| A | B | C |\n| - - - | - - - | - - - |\n| 1 | 2 | 3 |",
+    "| A | B | C |\r\n|---|---|\r\n| 1 | 2 | 3 |\r\n",
+    "A | B | C\n---|---\n1 | 2 | 3",
+])
+func markdownTableWithAWrongDividerIsStillATable(source: String) throws {
+    let table = try #require(containsTable(MarkdownReader.parse(source).blocks))
+    #expect(texts(table) == [["A", "B", "C"], ["1", "2", "3"]])
+    #expect(table.hasHeaderRow)
+}
+
+@Test func markdownTableRepairKeepsWhatIsAroundIt() throws {
+    let intro = MarkdownReader.parse("Wstęp:\n| A | B |\n|---|\n| 1 | 2 |")
+    #expect(intro.blocks.first?.plainText == "Wstęp:")
+    #expect(try texts(#require(containsTable(intro.blocks))) == [["A", "B"], ["1", "2"]])
+
+    // A row wider than the header keeps all its cells.
+    let wide = try #require(containsTable(MarkdownReader.parse("| A | B |\n|---|---|---|\n| 1 | 2 | 3 |").blocks))
+    #expect(texts(wide) == [["A", "B", ""], ["1", "2", "3"]])
+
+    let escaped = try #require(containsTable(MarkdownReader.parse("| A \\| B | C |\n|---|\n| **1** | 2 |").blocks))
+    #expect(texts(escaped) == [["A | B", "C"], ["1", "2"]])
+
+    let aligned = try #require(containsTable(MarkdownReader.parse("| A | B |\n|--:|\n| 1 | 2 |").blocks))
+    guard case .paragraph(_, .right)? = aligned.rows[1][0].blocks.first else {
+        Issue.record("the alignment was lost")
+        return
+    }
+
+    guard case .quote(let quoted)? = MarkdownReader.parse("> | A | B |\n> |---|\n> | 1 | 2 |").blocks.first else {
+        Issue.record("the quote was lost")
+        return
+    }
+    #expect(containsTable(quoted) != nil)
+
+    guard case .list(_, let items)? = MarkdownReader.parse("1. | A | B |\n   |---|\n   | 1 | 2 |").blocks.first else {
+        Issue.record("the list was lost")
+        return
+    }
+    #expect(try texts(#require(containsTable(items[0]))) == [["A", "B"], ["1", "2"]])
+}
+
+@Test(arguments: [
+    "Cena | wartość to zapis\nz kreską w środku",
+    "| A | B |\n| 1 | 2 |",
+    "Tytuł\n---",
+    "- jeden | dwa\n- trzy",
+])
+func markdownTextWithPipesIsNotMistakenForATable(source: String) {
+    #expect(containsTable(MarkdownReader.parse(source).blocks) == nil)
+}
+
+@Test func markdownCodeWithATableInsideStaysCode() {
+    let code = "| A | B |\n|---|\n| 1 | 2 |"
+    #expect(MarkdownReader.parse("```\n\(code)\n```").blocks == [.code(code, language: nil)])
+}
+
+@Test func markdownTableKeepsColumnAlignment() throws {
+    let table = try #require(containsTable(MarkdownReader.parse("| L | C | R | N |\n|:--|:-:|--:|---|\n| 1 | 2 | 3 | 4 |").blocks))
+    func alignment(_ cell: TableCell) -> TextAlignment? {
+        if case .paragraph(_, let alignment)? = cell.blocks.first { return alignment }
+        return nil
+    }
+    #expect(table.rows[1].map(alignment) == [nil, .center, .right, nil])
+
+    let html = HTMLWriter.render(RichDocument(blocks: [.table(table)]))
+    #expect(html.contains("<th style=\"text-align:center\">C</th>"))
+    #expect(html.contains("<td style=\"text-align:right\">3</td>"))
+    #expect(html.contains("<td>4</td>"))
+}
+
+@Test func markdownTableLeavesOutPositionsUnderASpan() throws {
+    let table = try #require(containsTable(MarkdownReader.parse("| A | B | C |\n|---|---|---|\n| 1 || 3 |\n| x | y | z |\n| ^ | q | r |").blocks))
+    #expect(texts(table) == [["A", "B", "C"], ["1", "3"], ["x", "y", "z"], ["q", "r"]])
+    #expect(table.rows[1][0].columnSpan == 2)
+    #expect(table.rows[2][0].rowSpan == 2)
+    #expect(table.rows[3].allSatisfy { $0.columnSpan == 1 && $0.rowSpan == 1 })
+}
+
+@Test(arguments: ["<br>", "<br/>", "<br />", "<BR>"])
+func markdownTableKeepsLineBreaksInCells(tag: String) throws {
+    let table = try #require(containsTable(MarkdownReader.parse("| A |\n|---|\n| 1\(tag)2 |").blocks))
+    #expect(table.rows[1][0].plainText == "1\n2")
+}
+
+@Test func markdownTableLineBreaksSurviveARoundTrip() throws {
+    let cell = TableCell(blocks: [.paragraph(content: [.text("1"), .lineBreak, .text("2")])])
+    let document = RichDocument(blocks: [.table(ConversionCore.Table(rows: [[TableCell(text: "A")], [cell]], hasHeaderRow: true))])
+    let table = try #require(containsTable(MarkdownReader.parse(MarkdownWriter.render(document)).blocks))
+    #expect(table.rows[1][0].plainText == "1\n2")
+}
+
+// MARK: - Tables in HTML
+
+private func tableDocument(rows: [[String]], hasHeaderRow: Bool = true) -> RichDocument {
+    RichDocument(blocks: [.table(ConversionCore.Table(rows: rows.map { $0.map { TableCell(text: $0) } }, hasHeaderRow: hasHeaderRow))])
+}
+
+@Test func htmlTableHasAHeaderSectionOnlyWhenItHasAHeader() {
+    let headed = HTMLWriter.render(tableDocument(rows: [["A"], ["1"]]))
+    #expect(headed.contains("<thead>\n<tr><th>A</th></tr>\n</thead>"))
+    #expect(headed.contains("<tbody>\n<tr><td>1</td></tr>\n</tbody>"))
+
+    let plain = HTMLWriter.render(tableDocument(rows: [["A"], ["1"]], hasHeaderRow: false))
+    #expect(!plain.contains("<thead>"))
+    #expect(plain.contains("<tbody>\n<tr><td>A</td></tr>\n<tr><td>1</td></tr>\n</tbody>"))
+
+    let headerOnly = HTMLWriter.render(tableDocument(rows: [["A"]]))
+    #expect(!headerOnly.contains("<tbody>"))
+}
+
+@Test func tableWordsWrapOnlyWhereItReadsWell() {
+    #expect(TableFit.segments(of: "Odpowiedzialność") == ["Odpowiedzialność"])
+    #expect(TableFit.segments(of: "Sources/DocumentEngine/HTMLWriter.swift") == ["Sources/", "DocumentEngine/", "HTMLWriter", ".swift"])
+    #expect(TableFit.segments(of: String(repeating: "x", count: 45)).map(\.count) == [20, 20, 5])
+
+    #expect(TableFit.isFigure("2026-11-02"))
+    #expect(TableFit.isFigure("12:30"))
+    #expect(TableFit.isFigure("1200,50"))
+    #expect(!TableFit.isFigure("1200"))
+    #expect(!TableFit.isFigure("v1-beta"))
+    #expect(!TableFit.isFigure("--"))
+}
+
+@Test func longWordsInATableGetPlacesToWrapAndLoseNoText() throws {
+    let address = "https://example.com/a/very/long/path/to/file.html?a=1&b=2"
+    let rendered = HTMLWriter.render(tableDocument(rows: [["Adres", "Data"], [address, "2026-11-02"]]))
+    #expect(rendered.contains("<wbr>"))
+    #expect(rendered.contains("<span class=\"nowrap\">2026-11-02</span>"))
+    #expect(rendered.contains("&amp;"))
+
+    let table = try #require(containsTable(HTMLReader.parse(rendered).blocks))
+    #expect(texts(table) == [["Adres", "Data"], [address, "2026-11-02"]])
+
+    // Outside a table the text wraps by itself.
+    let paragraph = HTMLWriter.render(RichDocument(blocks: [.paragraph(content: [.text(address)])]))
+    #expect(!paragraph.contains("<wbr>"))
+}
+
+@Test func tableMarkupIsWellFormedForEPUB() throws {
+    let document = tableDocument(rows: [["Adres", "Data"], ["https://example.com/a/very/long/path/to/file.html", "2026-11-02"]])
+    let body = HTMLBodyRenderer(xhtml: true) { _ in "" }.render(document.blocks)
+    #expect(body.contains("<wbr/>"))
+    _ = try XMLDocument(xmlString: "<body>\(body)</body>", options: [])
+}
+
+@Test func tableDensityFollowsWhatTheColumnsNeed() {
+    func density(columns: Int, word: String) -> String? {
+        TableFit.density(of: ConversionCore.Table(rows: [Array(repeating: TableCell(text: word), count: columns)]))
+    }
+    #expect(density(columns: 3, word: "Krótki") == nil)
+    #expect(density(columns: 7, word: "Dziennik") == nil)
+    #expect(density(columns: 8, word: "Dziennik") == "dense")
+    #expect(density(columns: 10, word: "Dziennik") == "denser")
+    #expect(density(columns: 12, word: "Dziennik") == "denser fixed")
+    #expect(density(columns: 24, word: "Odpowiedzialność") == "denser fixed")
+}
+
+// MARK: - Tables on PDF pages
+
+@MainActor
+private func pageTexts(of document: RichDocument) async throws -> [String] {
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let url = folder.appendingPathComponent("out.pdf")
+    try await WebPDFRenderer.render(html: HTMLWriter.render(document), to: url)
+    let pdf = try #require(PDFDocument(url: url))
+    return (0..<pdf.pageCount).map { pdf.page(at: $0)?.string ?? "" }
+}
+
+private func words(_ text: String) -> [String] {
+    text.split(whereSeparator: \.isWhitespace).map(String.init)
+}
+
+@MainActor
+@Test func longTableRepeatsItsHeaderOnEveryPage() async throws {
+    let rows = [["Nazwisko", "Cena"]] + (1...90).map { ["Pozycja\($0)", "\($0) zł"] }
+    let pages = try await pageTexts(of: tableDocument(rows: rows))
+    #expect(pages.count >= 3)
+    #expect(pages.allSatisfy { words($0).contains("Nazwisko") })
+    // Every row appears once, in order.
+    let found = pages.flatMap { words($0).filter { $0.hasPrefix("Pozycja") } }
+    #expect(found == (1...90).map { "Pozycja\($0)" })
+}
+
+@MainActor
+@Test func tallRowsAreNotCutByAPage() async throws {
+    let filler = String(repeating: "tekst który zawija się na wiele linii w tej komórce ", count: 6)
+    let rows = [["A", "B"]] + (1...40).map { ["Pierwszy\($0)", "\(filler) Ostatni\($0)"] }
+    let pages = try await pageTexts(of: tableDocument(rows: rows))
+    #expect(pages.count >= 2)
+    for row in 1...40 {
+        let page = pages.firstIndex { words($0).contains("Pierwszy\(row)") }
+        #expect(page != nil)
+        #expect(page == pages.firstIndex { words($0).contains("Ostatni\(row)") }, "row \(row)")
+    }
+}
+
+@MainActor
+@Test func aTableThatFitsOnAPageIsNotSplit() async throws {
+    // Whatever the text above it leaves, at several lengths.
+    let paragraph = Block.paragraph(content: [.text(String(repeating: "Zwykły tekst nad tabelą. ", count: 20))])
+    let table = ConversionCore.Table(
+        rows: [[TableCell(text: "A")]] + (1...14).map { [TableCell(text: "Wiersz\($0)")] },
+        hasHeaderRow: true
+    )
+    for count in stride(from: 3, through: 12, by: 3) {
+        let blocks = Array(repeating: paragraph, count: count) + [.table(table), .paragraph(content: [.text("Koniec")])]
+        let pages = try await pageTexts(of: RichDocument(blocks: blocks))
+        let holding = pages.filter { page in words(page).contains { $0.hasPrefix("Wiersz") } }
+        #expect(holding.count == 1, "\(count) paragraphs")
+    }
+}
+
+@MainActor
+@Test func aHeadingStaysWithItsTable() async throws {
+    let paragraph = Block.paragraph(content: [.text(String(repeating: "Zwykły tekst nad tabelą. ", count: 20))])
+    let long = ConversionCore.Table(rows: [[TableCell(text: "A")]] + (1...60).map { [TableCell(text: "Wiersz\($0)")] }, hasHeaderRow: true)
+    let short = ConversionCore.Table(rows: [[TableCell(text: "A")]] + (1...8).map { [TableCell(text: "Wiersz\($0)")] }, hasHeaderRow: true)
+    for table in [long, short] {
+        for count in 8...13 {
+            let blocks = Array(repeating: paragraph, count: count) + [.heading(level: 2, content: [.text("Nagłówektabeli")]), .table(table)]
+            let pages = try await pageTexts(of: RichDocument(blocks: blocks))
+            let heading = pages.firstIndex { words($0).contains("Nagłówektabeli") }
+            #expect(heading != nil)
+            #expect(heading == pages.firstIndex { words($0).contains("Wiersz1") }, "\(count) paragraphs")
+        }
+    }
+}
+
+@MainActor
+@Test func wideTableKeepsShortWordsWhole() async throws {
+    let long = String(repeating: "Zdanie opisujące, co dokładnie się zmieniło. ", count: 3)
+    let rows = [["Lp.", "Nazwa", "Opis", "Plik", "Adres", "Stan", "Data"]] + (1...3).map { row in
+        ["\(row)", "Dziennik", long, "Sources/DocumentEngine/Writers/HTMLWriter.swift", "https://github.com/rightform/mediashift/blob/main/README.md#section", "gotowe", "2026-11-02"]
+    }
+    let pages = try await pageTexts(of: tableDocument(rows: rows))
+    let found = pages.flatMap(words)
+    for word in ["Nazwa", "Dziennik", "gotowe", "2026-11-02"] {
+        #expect(found.contains(word), "\(word) was broken up")
+    }
+}
+
 // MARK: - HTML
 
 @Test func htmlRoundTripKeepsStructureAndEscaping() {
@@ -394,4 +731,270 @@ func attributedFormatsRoundTrip(format: FileFormat) throws {
     expectSampleText(in: parsed)
     let core = try ZipReader(url: output, formatName: "Word").data(at: "docProps/core.xml")
     #expect(core.flatMap { String(data: $0, encoding: .utf8) }?.contains("Test Author") == false)
+}
+
+// MARK: - Fixes from the conversion audit
+
+@Test func docxKeepsAListThatFollowsAnotherApart() throws {
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let url = folder.appendingPathComponent("lists.docx")
+    try DOCXWriter.write(RichDocument(blocks: [
+        .list(ordered: false, items: [[.paragraph(content: [.text("Punkt")])]]),
+        .list(ordered: true, items: [[.paragraph(content: [.text("Numer jeden")])], [.paragraph(content: [.text("Numer dwa")])]]),
+    ]), to: url)
+
+    let blocks = try DOCXReader.read(url).blocks
+    guard blocks.count == 2, case .list(false, let bullets) = blocks[0], case .list(true, let numbers) = blocks[1] else {
+        Issue.record("expected a bullet list and a numbered list, got \(blocks)")
+        return
+    }
+    #expect(bullets.count == 1)
+    #expect(numbers.count == 2)
+}
+
+@Test func docxQuoteStyleBecomesAQuote() throws {
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let url = folder.appendingPathComponent("quote.docx")
+    try DOCXWriter.write(RichDocument(blocks: [
+        .quote([.paragraph(content: [.text("Pierwsza linia")]), .paragraph(content: [.text("Druga linia")])]),
+        .paragraph(content: [.text("Po cytacie")]),
+    ]), to: url)
+
+    let blocks = try DOCXReader.read(url).blocks
+    #expect(blocks.count == 2)
+    guard case .quote(let quoted)? = blocks.first else {
+        Issue.record("the quote was lost")
+        return
+    }
+    #expect(quoted.map(\.plainText) == ["Pierwsza linia", "Druga linia"])
+}
+
+@Test func docxColumnsFollowTheirText() throws {
+    let long = String(repeating: "Zdanie opisujące, co dokładnie się zmieniło. ", count: 4)
+    let table = ConversionCore.Table(rows: [
+        [TableCell(text: "Lp."), TableCell(text: "Opis"), TableCell(text: "Data")],
+        [TableCell(text: "1"), TableCell(text: long), TableCell(text: "2026-11-02")],
+    ], hasHeaderRow: true)
+    let widths = TableFit.columnWidths(of: table, total: 9026, characterWidth: 110)
+    #expect(widths.reduce(0, +) == 9026)
+    #expect(widths[1] > widths[0] * 3)
+    // The date keeps room for itself on one line.
+    #expect(widths[2] >= 12 * 110)
+
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let url = folder.appendingPathComponent("table.docx")
+    try DOCXWriter.write(RichDocument(blocks: [.table(table)]), to: url)
+    let xml = try String(decoding: #require(ZipReader(url: url, formatName: "Word").data(at: "word/document.xml")), as: UTF8.self)
+    #expect(xml.contains("<w:gridCol w:w=\"\(widths[1])\"/>"))
+}
+
+@Test func tableWidthsShareTheRoomWhenEverythingFits() {
+    let table = ConversionCore.Table(rows: [[TableCell(text: "A"), TableCell(text: "Dłuższy tekst")]])
+    let widths = TableFit.columnWidths(of: table, total: 1000, characterWidth: 10)
+    #expect(widths.reduce(0, +) == 1000)
+    #expect(widths[1] > widths[0])
+}
+
+@Test func mergedRowsKeepColumnsInPlaceInTextFormats() {
+    let table = ConversionCore.Table(rows: [
+        [TableCell(text: "A"), TableCell(text: "B"), TableCell(text: "C")],
+        [TableCell(blocks: [.paragraph(content: [.text("Pion")])], rowSpan: 2), TableCell(text: "5 zł"), TableCell(text: "x")],
+        [TableCell(text: "6 zł"), TableCell(text: "y")],
+    ], hasHeaderRow: true)
+    let document = RichDocument(blocks: [.table(table)])
+
+    let markdown = MarkdownWriter.render(document)
+    #expect(markdown.contains("|  | 6 zł | y |"))
+    let reread = try? #require(containsTable(MarkdownReader.parse(markdown).blocks))
+    #expect(reread.map(texts) == [["A", "B", "C"], ["Pion", "5 zł", "x"], ["", "6 zł", "y"]])
+
+    #expect(PlainTextWriter.render(document).contains("\n\t6 zł\ty"))
+}
+
+@Test func markdownTasksKeepTheirBoxes() {
+    let document = MarkdownReader.parse("- [x] Zrobione\n- [ ] Do zrobienia\n- Zwykły punkt")
+    guard case .list(_, let items)? = document.blocks.first else {
+        Issue.record("the list was lost")
+        return
+    }
+    #expect(items.map { $0.first?.plainText } == ["☑ Zrobione", "☐ Do zrobienia", "Zwykły punkt"])
+}
+
+@Test func markdownFootnotesBecomeNumberedNotes() throws {
+    let source = """
+        Pierwszy[^b] i drugi[^a] przypis, a [^brak] zostaje.
+
+        [^a]: Treść **a**.
+        [^b]: Treść b,
+            ciąg dalszy.
+        """
+    let document = MarkdownReader.parse(source)
+    guard case .paragraph(let content, _)? = document.blocks.first else {
+        Issue.record("the paragraph was lost")
+        return
+    }
+    #expect(content.contains(.text("1", TextStyle(superscript: true))))
+    #expect(content.contains(.text("2", TextStyle(superscript: true))))
+    #expect(content.plainText == "Pierwszy1 i drugi2 przypis, a [^brak] zostaje.")
+    guard case .list(true, let notes)? = document.blocks.last else {
+        Issue.record("the notes are missing")
+        return
+    }
+    // Numbered in the order the text mentions them.
+    #expect(notes.map { $0.map(\.plainText).joined() } == ["Treść b, ciąg dalszy.", "Treść a."])
+    #expect(!document.plainText.contains("[^a]:"))
+}
+
+@Test func markdownFootnoteLookalikesInCodeStayCode() {
+    let source = "```\n[^1]: nie przypis\n```\n\nTekst `[^1]`.\n\n[^1]: Przypis."
+    let document = MarkdownReader.parse(source)
+    #expect(document.blocks.first == .code("[^1]: nie przypis", language: nil))
+    #expect(document.blocks[1].plainText == "Tekst [^1].")
+}
+
+@MainActor
+@Test func aTrailingEmptyPageIsDropped() async throws {
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let ending = folder.appendingPathComponent("ending.pdf")
+    try await WebPDFRenderer.render(html: HTMLWriter.render(RichDocument(blocks: [.paragraph(content: [.text("Tekst")]), .pageBreak])), to: ending)
+    #expect(PDFDocument(url: ending)?.pageCount == 1)
+
+    // A last page with only a picture is not empty.
+    let picture = folder.appendingPathComponent("picture.pdf")
+    let image = ImageAsset(data: try #require(NSBitmapImageRep(cgImage: redSquare()).representation(using: .png, properties: [:])), mimeType: "image/png")
+    try await WebPDFRenderer.render(html: HTMLWriter.render(RichDocument(blocks: [.paragraph(content: [.text("Tekst")]), .pageBreak, .image(image)])), to: picture)
+    #expect(PDFDocument(url: picture)?.pageCount == 2)
+}
+
+private func redSquare() -> CGImage {
+    let context = CGContext(data: nil, width: 64, height: 64, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+    context.setFillColor(CGColor(red: 0.8, green: 0.1, blue: 0.1, alpha: 1))
+    context.fill(CGRect(x: 0, y: 0, width: 64, height: 64))
+    return context.makeImage()!
+}
+
+/// The shape of the HTML that macOS's preview gives for a PowerPoint file.
+@MainActor
+@Test func slidesPrintOnePerPageInTheirOwnShape() async throws {
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let html = folder.appendingPathComponent("Preview.html")
+    let slide = { (text: String) in
+        "<div class=\"slide\" style=\"top:0; left:0;\"><div style=\"position:absolute; top:85; left:95; width:1730; height:112;\"><p style=\"font-size:116\">\(text)</p></div></div>"
+    }
+    try Data("""
+        <html><head><meta charset="utf-8"><style type="text/css">div.slide { position:relative; } div.slide, div.loading-slide { overflow:hidden; page-break-inside: avoid; margin-top: 5px; } @media screen { body { background: #ACB2BB; } }</style><style type="text/css">div.slide, div.loading-slide { width: 1920; height: 1080;}</style></head>
+        <body>\(slide("Pierwszy slajd szeroki na całą szerokość ekranu"))\(slide("Drugi"))\(slide("Trzeci"))</body></html>
+        """.utf8).write(to: html)
+    let output = folder.appendingPathComponent("slides.pdf")
+
+    try await WebPDFRenderer.render(slides: html, slideSize: CGSize(width: 1920, height: 1080), to: output)
+
+    let pdf = try #require(PDFDocument(url: output))
+    #expect(pdf.pageCount == 3)
+    let box = try #require(pdf.page(at: 0)).bounds(for: .mediaBox)
+    #expect(abs(box.width / box.height - 16.0 / 9.0) < 0.01)
+    // The long title wraps inside its box, and every word of it is on the page.
+    let first = words(pdf.page(at: 0)?.string ?? "")
+    #expect(first == ["Pierwszy", "slajd", "szeroki", "na", "całą", "szerokość", "ekranu"])
+    #expect(pdf.page(at: 2)?.string?.contains("Trzeci") == true)
+}
+
+@Test func docxGivesAWideTableSmallerText() throws {
+    let wide = ConversionCore.Table(rows: [Array(repeating: TableCell(text: "Dziennik"), count: 10)])
+    let narrow = ConversionCore.Table(rows: [[TableCell(text: "A"), TableCell(text: "B")]])
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let url = folder.appendingPathComponent("tables.docx")
+    try DOCXWriter.write(RichDocument(blocks: [.table(wide), .table(narrow)]), to: url)
+
+    let package = try ZipReader(url: url, formatName: "Word")
+    let xml = String(decoding: try #require(package.data(at: "word/document.xml")), as: UTF8.self)
+    let styles = String(decoding: try #require(package.data(at: "word/styles.xml")), as: UTF8.self)
+    #expect(xml.contains("<w:tblStyle w:val=\"TableGridDenser\"/>"))
+    #expect(xml.contains("<w:tblStyle w:val=\"TableGrid\"/>"))
+    #expect(styles.contains("w:styleId=\"TableGridDenser\""))
+}
+
+// MARK: - Reading structure back from PDF
+
+@MainActor
+private func readBack(html: String) async throws -> RichDocument {
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let url = folder.appendingPathComponent("page.pdf")
+    try await WebPDFRenderer.render(html: html, to: url)
+    return try await PDFTextReader.read(url, recognizesScans: false)
+}
+
+@MainActor
+private func readBack(_ document: RichDocument) async throws -> RichDocument {
+    try await readBack(html: HTMLWriter.render(document))
+}
+
+@MainActor
+@Test func pdfTablesComeBackAsTables() async throws {
+    let source = ConversionCore.Table(rows: [
+        ["Nazwa", "Cena", "Opis"],
+        ["Łódź", "1200,50 zł", "Środek"],
+        ["Kraków", "30 zł", "Zdanie dłuższe niż jedna linia w tej kolumnie, które się zawija w komórce tabeli."],
+    ].map { $0.map(TableCell.init(text:)) }, hasHeaderRow: true)
+    let document = try await readBack(RichDocument(blocks: [
+        .paragraph(content: [.text("Przed tabelą.")]), .table(source), .paragraph(content: [.text("Po tabeli.")]),
+    ]))
+    let table = try #require(containsTable(document.blocks))
+    #expect(texts(table) == texts(source))
+    #expect(document.blocks.first?.plainText == "Przed tabelą.")
+    #expect(document.blocks.last?.plainText == "Po tabeli.")
+}
+
+@MainActor
+@Test func pdfListsAndParagraphsKeepTheirShape() async throws {
+    let long = String(repeating: "Zdanie, które wypełnia linię i przechodzi do następnej. ", count: 6)
+    let document = try await readBack(RichDocument(blocks: [
+        .paragraph(content: [.text(long + "Koniec pierwszego.")]),
+        .paragraph(content: [.text("Drugi akapit.")]),
+        .list(ordered: true, items: [[.paragraph(content: [.text("Pierwszy punkt")])], [.paragraph(content: [.text("Drugi punkt")])]]),
+    ]))
+    #expect(document.blocks.count == 3)
+    #expect(document.blocks[0].plainText.hasSuffix("Koniec pierwszego."))
+    #expect(document.blocks[1].plainText == "Drugi akapit.")
+    guard case .list(true, let items) = document.blocks[2] else {
+        Issue.record("the list was lost: \(document.blocks)")
+        return
+    }
+    #expect(items.map { $0.map(\.plainText).joined() } == ["Pierwszy punkt", "Drugi punkt"])
+}
+
+@MainActor
+@Test func pdfKeepsNumbersThatDoNotCountFromOne() async throws {
+    let document = try await readBack(RichDocument(blocks: [
+        .paragraph(content: [.text("3. Trzeci punkt umowy.")]),
+        .paragraph(content: [.text("4. Czwarty punkt umowy.")]),
+        .paragraph(content: [.text("b) Litera zostaje.")]),
+    ]))
+    #expect(document.blocks.map(\.plainText) == ["3. Trzeci punkt umowy.", "4. Czwarty punkt umowy.", "b) Litera zostaje."])
+}
+
+@MainActor
+@Test func pdfColumnsOfTextReadInOrder() async throws {
+    let paragraphs = (1...6).map { "<p>Akapit \($0). Tekst ciągły, który płynie z jednej linii do następnej i z jednej kolumny do drugiej, jak w gazecie. Koniec \($0).</p>" }
+    let document = try await readBack(html: "<html><body style='font: 11pt Helvetica'><div style='column-count: 2; column-gap: 24pt'>\(paragraphs.joined())</div></body></html>")
+    let found = document.blocks.map(\.plainText).filter { $0.hasPrefix("Akapit") }
+    #expect(found.count == 6)
+    #expect(found.map { String($0.prefix(9)) } == (1...6).map { "Akapit \($0)." })
+    #expect(found.allSatisfy { $0.hasSuffix("Koniec \($0.dropFirst(7).prefix(1)).") })
+}
+
+@MainActor
+@Test func pdfTextThatRunsOnToTheNextPageStaysOneParagraph() async throws {
+    let text = (1...900).map { _ in "słowo" }.joined(separator: " ")
+    let document = try await readBack(RichDocument(blocks: [.paragraph(content: [.text(text + " koniec.")])]))
+    let paragraphs = document.blocks.filter { if case .paragraph = $0 { true } else { false } }
+    #expect(paragraphs.count == 1)
+    #expect(words(paragraphs.first?.plainText ?? "").count == 901)
 }

@@ -31,6 +31,20 @@ struct SystemPreviewTests {
         return data as Data
     }
 
+    @Test func aPresentationIsReadAsSlides() throws {
+        let html = """
+            <html><head><style type="text/css">div.slide, div.loading-slide { width: 1920; height: 1080;}</style></head>
+            <body><div class="slide" style="top:0; left:0;"><p>Slajd</p></div></body></html>
+            """
+        let folder = try dump(["Preview.html": Data(html.utf8)])
+        guard case .slides(_, let size) = try SystemPreview.rendering(in: folder.url) else {
+            Issue.record("expected slides")
+            return
+        }
+        #expect(size == CGSize(width: 1920, height: 1080))
+        #expect(SystemPreview.slideSize(in: "<body><p>div.slide, div.loading-slide { width: 10; height: 10;}</p></body>") == nil)
+    }
+
     @Test func prefersASinglePDF() throws {
         let folder = try dump([
             "Preview.html": Data("<html><body><img src=\"Attachment1.pdf\"></body></html>".utf8),

@@ -50,9 +50,14 @@ struct PagesWriter {
     }
 
     func write(to url: URL) throws {
-        // The finished app carries the template in its own Resources. A signed bundle cannot
-        // hold SwiftPM's resource bundle where the generated accessor looks for it.
+        // The finished app carries the template in its own Resources, where the command line
+        // tool in Contents/Helpers looks too. A signed bundle cannot hold SwiftPM's resource
+        // bundle where the generated accessor looks for it, and that accessor stops the program
+        // when it finds nothing, so it comes last.
+        let besideTool = Bundle.main.executableURL?.resolvingSymlinksInPath().deletingLastPathComponent()
+            .appendingPathComponent("../Resources/BlankTemplate.pages").standardizedFileURL
         let bundled = Bundle.main.url(forResource: "BlankTemplate", withExtension: "pages")
+            ?? besideTool.flatMap { FileManager.default.fileExists(atPath: $0.path) ? $0 : nil }
         guard let templateURL = bundled ?? Bundle.module.url(forResource: "BlankTemplate", withExtension: "pages", subdirectory: "Resources") else {
             throw ConversionError("The blank Pages template is missing from this app.")
         }

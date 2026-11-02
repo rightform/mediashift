@@ -403,7 +403,7 @@ struct PPTXFormatTests {
         switch rendering {
         case .pdf(let pdf):
             #expect(FileManager.default.fileExists(atPath: pdf.path))
-        case .html(let index):
+        case .html(let index), .slides(let index, _):
             #expect(FileManager.default.fileExists(atPath: index.path))
         }
     }

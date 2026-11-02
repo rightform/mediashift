@@ -1,19 +1,17 @@
-import ConversionCore
-
 /// A table's cells placed on its grid. `Table.rows` lists only real cells, the way HTML does,
 /// so a cell's column depends on the spans above and before it.
-struct TableLayout {
-    struct PlacedCell {
-        var column: Int
-        var cell: TableCell
-        var columnSpan: Int
-        var rowSpan: Int
+public struct TableLayout {
+    public struct PlacedCell: Sendable {
+        public var column: Int
+        public var cell: TableCell
+        public var columnSpan: Int
+        public var rowSpan: Int
     }
 
-    private(set) var rows: [[PlacedCell]] = []
-    private(set) var columnCount = 0
+    public private(set) var rows: [[PlacedCell]] = []
+    public private(set) var columnCount = 0
 
-    init(_ table: Table) {
+    public init(_ table: Table) {
         rows.reserveCapacity(table.rows.count)
         // Columns blocked by a row span from above, by row index. Sparse, spans are rare.
         var blocked: [Int: Set<Int>] = [:]
@@ -40,7 +38,7 @@ struct TableLayout {
     }
 
     /// The text of each row as a full width list of fields, with merged slots empty.
-    func textRows() -> [[String]] {
+    public func textRows() -> [[String]] {
         rows.map { row in
             var fields = Array(repeating: "", count: (row.last.map { $0.column + $0.columnSpan }) ?? 0)
             for placed in row { fields[placed.column] = placed.cell.plainText }

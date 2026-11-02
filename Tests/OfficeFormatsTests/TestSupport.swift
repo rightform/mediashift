@@ -66,7 +66,7 @@ func quickLookText(of url: URL) async throws -> String {
     switch rendering {
     case .pdf(let pdf):
         return pdfText(pdf)
-    case .html(let index):
+    case .html(let index), .slides(let index, _):
         return try htmlText(at: index)
     }
 }

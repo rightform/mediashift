@@ -26,6 +26,7 @@ extension String {
 private struct DOCXBodyParser {
     private let package: ZipReader
     private var headingLevels: [String: Int] = [:]
+    private var quoteStyles: Set<String> = []
     private var relationships: [String: (target: String, external: Bool)] = [:]
     private var orderedLevels: [String: Set<Int>] = [:]
 
@@ -56,10 +57,21 @@ private struct DOCXBodyParser {
             case "p":
                 let parsed = paragraph(element)
                 if let list = parsed.list {
+                    // Another list straight after, such as numbers after bullets, is a list of its own.
+                    if let first = pendingList.first, list.level <= first.level, list.id != first.numberingID {
+                        flushList(&result, parser: self)
+                    }
                     pendingList.append(ListParagraph(numberingID: list.id, level: list.level, blocks: parsed.blocks))
                 } else {
                     flushList(&result, parser: self)
-                    result += parsed.blocks
+                    for block in parsed.blocks {
+                        // Paragraphs of a quote style in a row make one quote.
+                        if case .quote(let inner) = block, case .quote(let previous)? = result.last {
+                            result[result.count - 1] = .quote(previous + inner)
+                        } else {
+                            result.append(block)
+                        }
+                    }
                 }
             case "tbl":
                 flushList(&result, parser: self)
@@ -124,6 +136,8 @@ private struct DOCXBodyParser {
                 blocks.append(.heading(level: min(heading, 6), content: content, alignment: alignment))
             } else if content.count == 1, case .image(let image) = content[0] {
                 blocks.append(.image(image))
+            } else if let styleID, quoteStyles.contains(styleID), properties?.child("numPr") == nil {
+                blocks.append(.quote([.paragraph(content: content, alignment: alignment)]))
             } else {
                 blocks.append(.paragraph(content: content, alignment: alignment))
             }
@@ -274,7 +288,9 @@ private struct DOCXBodyParser {
         for style in styles.children(named: "style") where style.value(of: "w:type") == "paragraph" {
             guard let id = style.value(of: "w:styleId") else { continue }
             let name = style.child("name")?.value(of: "w:val")?.lowercased() ?? ""
-            if name == "title" {
+            if name == "quote" || name == "intense quote" {
+                quoteStyles.insert(id)
+            } else if name == "title" {
                 headingLevels[id] = 1
             } else if name.hasPrefix("heading"), let level = Int(name.drop { !$0.isNumber }) {
                 headingLevels[id] = min(level, 6)

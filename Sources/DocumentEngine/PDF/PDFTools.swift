@@ -111,6 +111,36 @@ public enum PDFTools {
         context.closePDF()
     }
 
+    /// Drops empty pages from the end. The first page always stays.
+    static func removeTrailingBlankPages(of url: URL) throws {
+        guard let document = PDFDocument(url: url), document.pageCount > 1 else { return }
+        var removed = false
+        while document.pageCount > 1, let last = document.page(at: document.pageCount - 1), isBlank(last) {
+            document.removePage(at: document.pageCount - 1)
+            removed = true
+        }
+        if removed, !document.write(to: url) {
+            throw ConversionError("The PDF could not be created.")
+        }
+    }
+
+    /// No text, and nothing drawn: every pixel of a small rendering is white.
+    static func isBlank(_ page: PDFPage) -> Bool {
+        guard (page.string ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            let image = render(page, dpi: 18),
+            let data = image.dataProvider?.data,
+            let bytes = CFDataGetBytePtr(data)
+        else { return false }
+        for row in 0..<image.height {
+            let start = row * image.bytesPerRow
+            for offset in stride(from: start, to: start + image.width * 4, by: 4)
+            where bytes[offset] < 250 || bytes[offset + 1] < 250 || bytes[offset + 2] < 250 {
+                return false
+            }
+        }
+        return true
+    }
+
     private static func open(_ url: URL) throws -> PDFDocument {
         guard let pdf = PDFDocument(url: url) else {
             throw ConversionError("This PDF could not be opened. It may be damaged.")

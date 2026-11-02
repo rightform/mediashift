@@ -53,6 +53,10 @@ struct AudioPlan {
             arguments += ["-vn"]
         }
         arguments += ["-sn", "-dn"]
+        // Ogg keeps its tags on the audio stream, where formats such as MP3 never look.
+        if case .convert = mode, info.container == "ogg", !options.removesMetadata {
+            arguments += ["-map_metadata", "0:s:a:0"]
+        }
         arguments += try codecArguments(for: audio)
         arguments += ["-f", muxer]
         if format == .m4a {
@@ -72,7 +76,7 @@ struct AudioPlan {
             return try lossy("libmp3lame", audio: audio, quality: "2", defaultRate: nil, extra: mp3Limits(audio))
         case .m4a:
             let encoder = capabilities.first(of: ["aac_at", "aac"]) ?? "aac"
-            return try lossy(encoder, audio: audio, quality: nil, defaultRate: 192_000, extra: [])
+            return try lossy(encoder, audio: audio, quality: nil, defaultRate: 192_000, extra: Self.aacLimits(audio))
         case .ogg:
             return try lossy("libvorbis", audio: audio, quality: "5", defaultRate: nil, extra: [])
         case .opus:
@@ -156,6 +160,11 @@ struct AudioPlan {
             rate = min(rate, Int(Double(source) * 0.85))
         }
         return max(rate, format == .opus ? 16_000 : 32_000)
+    }
+
+    /// Apple's AAC encoder refuses rates above 48 kHz, such as 96 kHz studio recordings.
+    static func aacLimits(_ audio: MediaInfo.Stream) -> [String] {
+        (audio.sampleRate ?? 0) > 48_000 ? ["-ar", "48000"] : []
     }
 
     /// Opus is always 48 kHz, MP3 tops out at 48 kHz and two channels.

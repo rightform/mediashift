@@ -262,7 +262,8 @@ struct VideoPlan {
         default:
             let encoder = capabilities.first(of: ["aac_at", "aac"]) ?? "aac"
             let fallback = Self.defaultAACBitrate(channels: audio.channels)
-            return ["-c:\(spec)", encoder, "-b:\(spec)", String(rate ?? fallback)]
+            let limits = AudioPlan.aacLimits(audio).isEmpty ? [] : ["-ar:\(spec)", "48000"]
+            return ["-c:\(spec)", encoder, "-b:\(spec)", String(rate ?? fallback)] + limits
         }
     }
 

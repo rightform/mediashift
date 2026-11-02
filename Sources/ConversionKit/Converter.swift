@@ -270,15 +270,40 @@ public enum Converter {
         case .csv: return try CSVFormat.read(url)
         case .tsv: return try CSVFormat.read(url, delimiter: "\t")
         case .pptx: return try PPTXFormat.read(url)
-        case .pages: return try PagesFormat.read(url)
-        case .numbers, .key:
-            // No public parser for these. The system renders them, and the text is read from that.
-            let (rendering, folder) = try await SystemPreview.render(url)
-            defer { try? FileManager.default.removeItem(at: folder) }
-            let pdf = try await pdf(from: rendering, in: folder, paper: options.paperSize)
-            return try await PDFTextReader.read(pdf, recognizesScans: options.recognizesScans, progress: progress)
+        case .pages:
+            let document = try PagesFormat.read(url)
+            // A page layout document, such as a poster or a newsletter, keeps its text in boxes
+            // on the page, which the reader does not walk. The system's rendering has that text.
+            if !document.plainText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return document }
+            return try await previewText(of: url, format: format, options: options, progress: progress)
+        case .numbers:
+            // The tables come straight from the file, row by row. A document without one still
+            // has whatever text the system's rendering shows.
+            let document = try NumbersFormat.read(url)
+            if !document.blocks.isEmpty { return document }
+            return try await previewText(of: url, format: format, options: options, progress: progress)
+        case .key:
+            // No public parser for this. The system renders it, and the text is read from that.
+            return try await previewText(of: url, format: format, options: options, progress: progress)
         default:
             throw ConversionError("\(format.label) files cannot be read as documents.")
+        }
+    }
+
+    private static func previewText(
+        of url: URL,
+        format: FileFormat,
+        options: ConversionOptions,
+        progress: ProgressHandler?
+    ) async throws -> RichDocument {
+        let (rendering, folder) = try await SystemPreview.render(url)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let pdf = try await pdf(from: rendering, in: folder, paper: options.paperSize)
+        do {
+            return try await PDFTextReader.read(pdf, recognizesScans: options.recognizesScans, progress: progress)
+        } catch let error as ConversionError where error == PDFTextReader.noText {
+            // The PDF is a step on the way, so the message names the file the person chose.
+            throw ConversionError("No text was found in this \(format.label) file.")
         }
     }
 
@@ -327,6 +352,10 @@ public enum Converter {
             let url = folder.appendingPathComponent("rendered.pdf")
             try await WebPDFRenderer.render(file: index, paper: paper, to: url)
             return url
+        case .slides(let index, let size):
+            let url = folder.appendingPathComponent("rendered.pdf")
+            try await WebPDFRenderer.render(slides: index, slideSize: size, to: url)
+            return url
         }
     }
 
@@ -373,25 +402,42 @@ public enum Converter {
 
     private static func imageAsset(from url: URL) throws -> ImageAsset {
         let data = try Data(contentsOf: url)
-        let mime: String
-        switch FileFormat(url: url) {
-        case .png: mime = "image/png"
-        case .jpeg: mime = "image/jpeg"
-        case .gif: mime = "image/gif"
-        default:
-            // Slides hold only the formats Office can draw, so anything else travels as PNG.
-            guard let source = CGImageSourceCreateWithData(data as CFData, nil),
-                let image = CGImageSourceCreateImageAtIndex(source, 0, nil)
-            else { throw ConversionError("This image could not be read.") }
-            let converted = NSMutableData()
-            guard let destination = CGImageDestinationCreateWithData(converted, "public.png" as CFString, 1, nil) else {
-                throw ConversionError("This image could not be read.")
-            }
-            CGImageDestinationAddImage(destination, image, nil)
-            guard CGImageDestinationFinalize(destination) else { throw ConversionError("This image could not be read.") }
-            return ImageAsset(data: converted as Data, mimeType: "image/png")
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else {
+            throw ConversionError("This image could not be read.")
         }
-        return ImageAsset(data: data, mimeType: mime)
+        let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] ?? [:]
+        let upright = (properties[kCGImagePropertyOrientation] as? NSNumber)?.intValue ?? 1 == 1
+        // Slide apps draw the stored pixels and ignore the EXIF orientation, so a turned photo
+        // is turned upright here. Slides hold only the formats Office can draw, so anything
+        // else travels as PNG.
+        if upright {
+            switch FileFormat(url: url) {
+            case .png: return ImageAsset(data: data, mimeType: "image/png")
+            case .jpeg: return ImageAsset(data: data, mimeType: "image/jpeg")
+            case .gif: return ImageAsset(data: data, mimeType: "image/gif")
+            default: break
+            }
+        }
+        let width = (properties[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue ?? 0
+        let height = (properties[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue ?? 0
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: max(width, height, 1),
+        ]
+        guard let image = upright
+            ? CGImageSourceCreateImageAtIndex(source, 0, nil)
+            : CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
+        else { throw ConversionError("This image could not be read.") }
+
+        let photo = FileFormat(url: url) == .jpeg
+        let converted = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(converted, (photo ? "public.jpeg" : "public.png") as CFString, 1, nil) else {
+            throw ConversionError("This image could not be read.")
+        }
+        CGImageDestinationAddImage(destination, image, photo ? [kCGImageDestinationLossyCompressionQuality: 0.92] as CFDictionary : nil)
+        guard CGImageDestinationFinalize(destination) else { throw ConversionError("This image could not be read.") }
+        return ImageAsset(data: converted as Data, mimeType: photo ? "image/jpeg" : "image/png")
     }
 
     private static func recognizeText(in url: URL, to output: URL) async throws {

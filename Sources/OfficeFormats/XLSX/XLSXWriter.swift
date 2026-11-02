@@ -51,15 +51,24 @@ struct XLSXWriter {
     }
 
     /// One plan per table, then the text blocks together. A workbook needs at least one sheet.
+    /// A heading straight above an unnamed table names its sheet instead of joining the text.
     private func sheetPlans() -> [SheetPlan] {
         var plans: [SheetPlan] = []
         var textRows: [[TableCell]] = []
         var boldRows: Set<Int> = []
 
-        func collectText(_ block: Block) {
+        let blocks = document.blocks
+        var named: Set<Int> = []
+        for index in blocks.indices.dropLast() {
+            if case .heading = blocks[index], case .table(let table) = blocks[index + 1], table.name == nil {
+                named.insert(index)
+            }
+        }
+
+        func collectText(_ block: Block, heading: String? = nil) {
             switch block {
             case .table(let table):
-                plans.append(SheetPlan(name: table.name, layout: TableLayout(table), hasHeaderRow: table.hasHeaderRow))
+                plans.append(SheetPlan(name: table.name ?? heading, layout: TableLayout(table), hasHeaderRow: table.hasHeaderRow))
             case .heading(_, let content, _):
                 let text = content.plainText
                 if !text.isEmpty {
@@ -67,9 +76,9 @@ struct XLSXWriter {
                     textRows.append([TableCell(text: text)])
                 }
             case .list(_, let items):
-                items.forEach { $0.forEach(collectText) }
+                items.forEach { $0.forEach { collectText($0) } }
             case .quote(let blocks):
-                blocks.forEach(collectText)
+                blocks.forEach { collectText($0) }
             case .code(let code, _):
                 code.components(separatedBy: .newlines).forEach { textRows.append([TableCell(text: $0)]) }
             case .paragraph, .image:
@@ -79,7 +88,10 @@ struct XLSXWriter {
                 break
             }
         }
-        document.blocks.forEach(collectText)
+        for (index, block) in blocks.enumerated() where !named.contains(index) {
+            let heading = index > 0 && named.contains(index - 1) ? blocks[index - 1].plainText : nil
+            collectText(block, heading: heading)
+        }
 
         if !textRows.isEmpty {
             var plan = SheetPlan(name: "Text", layout: TableLayout(Table(rows: textRows)), hasHeaderRow: false)

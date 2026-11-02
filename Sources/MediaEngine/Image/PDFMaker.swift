@@ -22,14 +22,18 @@ enum PDFMaker {
             } catch {
                 throw ConversionError("\(input.lastPathComponent) is not an image that can be read.")
             }
-            let index = source.primaryIndex
-            let image = try ImageRenderer.render(
-                source, index: index, applyingOrientation: source.orientation(at: index) != .up, maxPixelSize: nil
-            )
-            var page = pageBox(for: image, dpi: source.dpi(at: index) ?? 72)
-            context.beginPage(mediaBox: &page)
-            context.draw(image, in: page)
-            context.endPage()
+            // A TIFF holds a scanned document one page per picture. Elsewhere a file with
+            // several pictures holds frames of an animation or versions of one picture.
+            let indices = source.format == .tiff ? Array(0..<source.count) : [source.primaryIndex]
+            for index in indices {
+                let image = try ImageRenderer.render(
+                    source, index: index, applyingOrientation: source.orientation(at: index) != .up, maxPixelSize: nil
+                )
+                var page = pageBox(for: image, dpi: source.dpi(at: index) ?? 72)
+                context.beginPage(mediaBox: &page)
+                context.draw(image, in: page)
+                context.endPage()
+            }
         }
         context.closePDF()
         return data as Data

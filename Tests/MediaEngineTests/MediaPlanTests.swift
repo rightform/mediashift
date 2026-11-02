@@ -28,6 +28,11 @@ private enum Logs {
 }
 
 @Suite struct MediaInfoTests {
+    @Test func readsTheContainer() throws {
+        #expect(try #require(MediaInfo(parsing: Logs.mp4)).container == "mov,mp4,m4a,3gp,3g2,mj2")
+        #expect(try #require(MediaInfo(parsing: Logs.flac)).container == "flac")
+    }
+
     @Test func readsDurationAndStreams() throws {
         let info = try #require(MediaInfo(parsing: Logs.mp4))
 
@@ -220,6 +225,31 @@ private enum Logs {
         #expect(throws: ConversionError.self) {
             try MediaPlan.convert(info(video: nil), to: .gif, capabilities: capabilities)
         }
+    }
+
+    /// Apple's AAC encoder writes nothing at all for 96 kHz input.
+    @Test func aacGetsAtMost48kHz() throws {
+        var studio = info(video: nil, audio: "flac")
+        studio.streams[0].sampleRate = 96_000
+        let audio = try first(studio, to: .m4a).joined(separator: " ")
+        #expect(audio.contains("-ar 48000"))
+        let normal = try first(info(video: nil, audio: "flac"), to: .m4a).joined(separator: " ")
+        #expect(!normal.contains("-ar"))
+
+        var film = info(audio: "flac")
+        film.streams[1].sampleRate = 96_000
+        #expect(try first(film, to: .mp4).joined(separator: " ").contains("-ar:a:0 48000"))
+    }
+
+    /// Ogg keeps titles on the audio stream, where MP3 never looks.
+    @Test func oggTagsReachOtherFormats() throws {
+        var ogg = info(video: nil, audio: "opus")
+        ogg.container = "ogg"
+        let arguments = try first(ogg, to: .mp3).joined(separator: " ")
+        #expect(arguments.contains("-map_metadata 0:s:a:0"))
+        #expect(!(try first(info(video: nil, audio: "aac"), to: .mp3).joined(separator: " ").contains("0:s:a:0")))
+        let stripped = try #require(MediaPlan.convert(ogg, to: .mp3, capabilities: capabilities, options: MediaOptions(removesMetadata: true)).first)
+        #expect(!stripped.joined(separator: " ").contains("0:s:a:0"))
     }
 
     @Test func audioTargetsNeedAudio() {

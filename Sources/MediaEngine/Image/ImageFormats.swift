@@ -38,9 +38,10 @@ extension FileFormat {
         self != .jpeg && self != .bmp
     }
 
-    /// Formats where an EXIF orientation tag is honoured by viewers.
+    /// Formats where an EXIF orientation tag is honoured by viewers. AVIF is not one: ImageIO
+    /// writes it without the tag, so a turned photo would come out on its side.
     var storesOrientation: Bool {
-        [.jpeg, .heic, .tiff, .avif].contains(self)
+        [.jpeg, .heic, .tiff].contains(self)
     }
 
     var isLossy: Bool {

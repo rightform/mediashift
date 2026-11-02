@@ -43,7 +43,7 @@ public enum ConversionCatalog {
         case .xlsx:
             all = [.pdf, .csv, .tsv, .html, .md, .txt, .docx]
         case .numbers:
-            all = pageImageTargets + [.txt]
+            all = [.pdf, .xlsx, .csv, .tsv, .html, .md, .txt, .docx, .png, .jpeg]
         case .csv, .tsv:
             all = [.xlsx, .pdf, .csv, .tsv, .html, .md, .docx]
         case .jpeg, .png, .heic, .webp, .avif, .tiff, .gif, .bmp:

@@ -205,7 +205,7 @@ rm -rf ~/Library/Caches/MediaShift
 
 - The document model keeps structure and common text styling, such as headings, lists, tables, images, links, bold and colour. It does not keep page layout, so a converted file will not match a designed original exactly.
 - RTF and ODT output carry text and tables, but images are not preserved.
-- PDF to text formats recovers text and headings, not layout.
+- PDF to text formats recovers text, headings, lists and tables, not page layout.
 - The first text recognition after installing takes about 25 seconds while macOS prepares its model. After that it is immediate.
 - Written Pages files hold text and heading styles, so images and tables become text.
 - Intel support is new and less tested than Apple Silicon. Video encoding on Intel Macs is slower too.

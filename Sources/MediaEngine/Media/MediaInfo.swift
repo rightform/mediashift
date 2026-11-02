@@ -26,16 +26,19 @@ struct MediaInfo: Sendable, Equatable {
     var duration: Double?
     var bitrate: Int?
     var streams: [Stream]
+    /// The demuxer ffmpeg chose, such as `ogg` or `mov,mp4,m4a,3gp,3g2,mj2`.
+    var container: String?
 
     var mainVideo: Stream? { streams.first { $0.kind == .video && !$0.isAttachedPicture } }
     var audioStreams: [Stream] { streams.filter { $0.kind == .audio } }
     var subtitleStreams: [Stream] { streams.filter { $0.kind == .subtitle } }
     var attachedPicture: Stream? { streams.first { $0.kind == .video && $0.isAttachedPicture } }
 
-    init(duration: Double?, bitrate: Int?, streams: [Stream]) {
+    init(duration: Double?, bitrate: Int?, streams: [Stream], container: String? = nil) {
         self.duration = duration
         self.bitrate = bitrate
         self.streams = streams
+        self.container = container
     }
 
     /// Reads the log ffmpeg prints for `-i file`. Returns nil when the file did not open.
@@ -45,10 +48,13 @@ struct MediaInfo: Sendable, Equatable {
         var duration: Double?
         var bitrate: Int?
         var sawDuration = false
+        var container: String?
 
         for raw in log.split(separator: "\n") {
             let line = raw.trimmingCharacters(in: .whitespaces)
-            if line.hasPrefix("Duration: "), !sawDuration {
+            if line.hasPrefix("Input #0, "), let from = line.range(of: ", from ") {
+                container = String(line[line.index(line.startIndex, offsetBy: 10)..<from.lowerBound])
+            } else if line.hasPrefix("Duration: "), !sawDuration {
                 sawDuration = true
                 (duration, bitrate) = Self.parseDuration(line)
             } else if line.hasPrefix("Stream #0:"), let stream = Self.parseStream(line) {
@@ -58,6 +64,7 @@ struct MediaInfo: Sendable, Equatable {
         self.duration = duration
         self.bitrate = bitrate
         self.streams = streams
+        self.container = container
     }
 
     // MARK: Parsing

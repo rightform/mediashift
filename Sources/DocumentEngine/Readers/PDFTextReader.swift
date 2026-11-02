@@ -4,6 +4,8 @@ import PDFKit
 import Vision
 
 public enum PDFTextReader {
+    public static let noText = ConversionError("No text was found in this PDF.")
+
     /// Reads text pages directly and falls back to on-device OCR for scanned pages, unless told not to.
     public static func read(_ url: URL, recognizesScans: Bool = true, progress: ProgressHandler? = nil) async throws -> RichDocument {
         guard let pdf = PDFDocument(url: url) else {
@@ -17,23 +19,55 @@ public enum PDFTextReader {
         document.title = (attributes?[PDFDocumentAttribute.titleAttribute] as? String)?.trimmed.nilIfEmpty
         document.author = (attributes?[PDFDocumentAttribute.authorAttribute] as? String)?.trimmed.nilIfEmpty
 
+        // Text with positions is laid out first, so that every page measures its headings
+        // against the same body size.
+        // Laying out takes most of the time, so it has most of the progress bar.
+        var layouts: [Int: PDFLayout] = [:]
+        for index in 0..<pdf.pageCount {
+            try Task.checkCancellation()
+            if let page = pdf.page(at: index) { layouts[index] = PDFLayout(page: page) }
+            progress?(0.8 * Double(index + 1) / Double(pdf.pageCount))
+        }
+        let body = PDFLayout.bodySize(of: Array(layouts.values))
+
         for index in 0..<pdf.pageCount {
             try Task.checkCancellation()
             guard let page = pdf.page(at: index) else { continue }
-            var blocks = blocks(from: page)
+            var blocks = layouts[index]?.blocks(body: body) ?? blocks(from: page)
             if blocks.isEmpty, recognizesScans, let lines = try? await recognizeText(on: page), !lines.isEmpty {
                 blocks = paragraphs(from: lines.map { Line(text: $0, fontSize: 12) }, bodySize: 12)
             }
             if !blocks.isEmpty {
-                if !document.blocks.isEmpty { document.blocks.append(.pageBreak) }
+                // A paragraph or list item that runs on from the page before is one piece of text.
+                if let last = document.blocks.last, let joined = continued(last, by: blocks[0]) {
+                    document.blocks[document.blocks.count - 1] = joined
+                    blocks.removeFirst()
+                }
+                if !document.blocks.isEmpty, !blocks.isEmpty { document.blocks.append(.pageBreak) }
                 document.blocks += blocks
             }
-            progress?(Double(index + 1) / Double(pdf.pageCount))
+            progress?(0.8 + 0.2 * Double(index + 1) / Double(pdf.pageCount))
         }
         if document.blocks.isEmpty {
-            throw ConversionError("No text was found in this PDF.")
+            throw noText
         }
         return document
+    }
+
+    /// The text of a page that starts in lower case continues the paragraph or item before.
+    private static func continued(_ last: Block, by next: Block) -> Block? {
+        guard case .paragraph(let content, _) = next, let first = content.plainText.first, first.isLowercase else { return nil }
+        let text = content.plainText
+        switch last {
+        case .paragraph(let previous, let alignment):
+            return .paragraph(content: [.text(previous.plainText + " " + text)], alignment: alignment)
+        case .list(let ordered, var items):
+            guard case .paragraph(let previous, let alignment)? = items.last?.last else { return nil }
+            items[items.count - 1][items[items.count - 1].count - 1] = .paragraph(content: [.text(previous.plainText + " " + text)], alignment: alignment)
+            return .list(ordered: ordered, items: items)
+        default:
+            return nil
+        }
     }
 
     private struct Line {
@@ -41,6 +75,7 @@ public enum PDFTextReader {
         let fontSize: CGFloat
     }
 
+    /// Without character positions, the text order of the PDF is all there is.
     private static func blocks(from page: PDFPage) -> [Block] {
         guard let text = page.attributedString, text.length > 0 else {
             return page.string.map { paragraphs(from: $0.components(separatedBy: .newlines).map { Line(text: $0, fontSize: 12) }, bodySize: 12) } ?? []

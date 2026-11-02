@@ -12,6 +12,8 @@ public enum SystemPreview {
     public enum Rendering: Sendable {
         case pdf(URL)
         case html(index: URL)
+        /// A presentation: slides of one size, in CSS pixels, stacked on a page.
+        case slides(index: URL, size: CGSize)
     }
 
     static let tookTooLong = ConversionError("macOS took too long to preview this file.")
@@ -75,7 +77,19 @@ public enum SystemPreview {
             return .html(index: stacked)
         }
         guard !bodyText(html).isEmpty || html.contains(/(?i)<(img|svg|canvas|object|embed)\b/) else { throw failure }
+        if let size = slideSize(in: html) {
+            return .slides(index: index, size: size)
+        }
         return .html(index: index)
+    }
+
+    /// A PowerPoint preview states its slide size once, as `div.slide, div.loading-slide { width: 1920; height: 1080;}`.
+    static func slideSize(in html: String) -> CGSize? {
+        guard html.contains("class=\"slide\""),
+            let match = html.firstMatch(of: /div\.slide, div\.loading-slide \{\s*width:\s*(\d+)(?:px)?;\s*height:\s*(\d+)(?:px)?;/),
+            let width = Double(match.output.1), let height = Double(match.output.2), width > 0, height > 0
+        else { return nil }
+        return CGSize(width: width, height: height)
     }
 
     /// A workbook with several sheets previews as tabs over an iframe, and anything printing

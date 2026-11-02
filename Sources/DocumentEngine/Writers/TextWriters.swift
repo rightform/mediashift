@@ -28,7 +28,8 @@ public enum PlainTextWriter {
                 return indent + marker + bare
             }.joined(separator: "\n")
         case .table(let table):
-            return table.rows.map { row in indent + row.map { $0.plainText.replacingOccurrences(of: "\n", with: " ") }.joined(separator: "\t") }
+            // A merged cell keeps its text in its first column, so the columns below still line up.
+            return TableLayout(table).textRows().map { row in indent + row.map { $0.replacingOccurrences(of: "\n", with: " ") }.joined(separator: "\t") }
                 .joined(separator: "\n")
         case .image(let image):
             return image.alt.map { indent + $0 } ?? ""
@@ -119,22 +120,22 @@ public enum MarkdownWriter {
         }
 
         private mutating func render(_ table: ConversionCore.Table) -> String {
-            let width = table.rows.map { row in row.reduce(0) { $0 + $1.columnSpan } }.max() ?? 0
-            guard width > 0 else { return "" }
+            // Markdown has no merged cells, so a merged cell keeps its text in its first column
+            // and leaves the others empty, in its own row and in the rows it spans.
+            let layout = TableLayout(table)
+            guard layout.columnCount > 0 else { return "" }
             var lines: [String] = []
-            for (index, row) in table.rows.enumerated() {
-                var cells: [String] = []
-                for cell in row {
-                    let text = cell.blocks.map { render($0) }.joined(separator: "<br>")
+            for (index, row) in layout.rows.enumerated() {
+                var cells = Array(repeating: "", count: layout.columnCount)
+                for placed in row {
+                    cells[placed.column] = placed.cell.blocks.map { render($0) }.joined(separator: "<br>")
+                        .replacingOccurrences(of: "  \n", with: "<br>")
                         .replacingOccurrences(of: "\n", with: "<br>")
                         .replacingOccurrences(of: "|", with: "\\|")
-                    cells.append(text)
-                    cells += Array(repeating: "", count: max(0, cell.columnSpan - 1))
                 }
-                cells += Array(repeating: "", count: max(0, width - cells.count))
                 lines.append("| " + cells.joined(separator: " | ") + " |")
                 if index == 0 {
-                    lines.append("|" + Array(repeating: " --- ", count: width).joined(separator: "|") + "|")
+                    lines.append("|" + Array(repeating: " --- ", count: layout.columnCount).joined(separator: "|") + "|")
                 }
             }
             return lines.joined(separator: "\n")

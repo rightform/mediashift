@@ -13,6 +13,7 @@ struct IWATableReader {
         static let boolean: UInt8 = 6
         static let duration: UInt8 = 7
         static let richText: UInt8 = 9
+        static let currency: UInt8 = 10
     }
 
     private static let maxRows = 1 << 20
@@ -146,7 +147,7 @@ struct IWATableReader {
             return stringID.flatMap { strings[$0] }
         case CellKind.richText:
             return richID.flatMap { richText[$0] }
-        case CellKind.number, CellKind.duration:
+        case CellKind.number, CellKind.duration, CellKind.currency:
             return (decimal ?? double).map(NumberFormat.generalString)
         case CellKind.boolean:
             return (decimal ?? double).map { $0 != 0 ? "TRUE" : "FALSE" }

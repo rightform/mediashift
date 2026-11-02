@@ -8,6 +8,7 @@ import UniformTypeIdentifiers
 @testable import ConversionKit
 @testable import DocumentEngine
 @testable import MediaEngine
+@testable import OfficeFormats
 
 private let document = RichDocument(
     title: "Zażółć gęślą jaźń",
@@ -66,6 +67,8 @@ private func writeImage(to url: URL, type: UTType = .png) throws {
     #expect(ConversionCatalog.targets(for: .pptx).contains(.pdf))
     #expect(ConversionCatalog.targets(for: .xlsx).contains(.csv))
     #expect(ConversionCatalog.targets(for: .csv).contains(.xlsx))
+    #expect(ConversionCatalog.targets(for: .numbers).contains(.csv))
+    #expect(ConversionCatalog.targets(for: .numbers).contains(.xlsx))
     #expect(ConversionCatalog.targets(for: .pdf).contains(.pptx))
     #expect(ConversionCatalog.targets(for: .jpeg).contains(.webp))
     #expect(ConversionCatalog.targets(for: .mp4).contains(.webm))
@@ -276,6 +279,76 @@ func textSurvivesConversionToPDF(source format: FileFormat) async throws {
     // A4 is 8.27 inches wide.
     #expect(abs(try width(low.output) - 595) < 3)
     #expect(abs(try width(high.output) - 2480) < 6)
+}
+
+@Test @MainActor func markdownFrontMatterIsDataThatCanBeRemoved() async throws {
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let note = folder.appendingPathComponent("note.md")
+    try Data("---\ntitle: Secret Title\nauthor: Secret Author\n---\n\nBody".utf8).write(to: note)
+
+    let kept = try await Converter.run(.convert(.html), on: note, options: ConversionOptions(convertedSuffix: "kept"))
+    let keptHTML = try String(contentsOf: kept.output, encoding: .utf8)
+    #expect(keptHTML.contains("<title>Secret Title</title>"))
+    #expect(keptHTML.contains("Secret Author"))
+
+    let clean = try await Converter.run(.convert(.html), on: note, options: ConversionOptions(removesMetadata: true, convertedSuffix: "clean"))
+    let cleanHTML = try String(contentsOf: clean.output, encoding: .utf8)
+    #expect(!cleanHTML.contains("Secret"))
+    #expect(cleanHTML.contains("<p>Body</p>"))
+
+    let pdf = try await Converter.run(.convert(.pdf), on: note)
+    let text = try #require(PDFDocument(url: pdf.output)).string ?? ""
+    #expect(text.contains("Body"))
+    #expect(!text.contains("Secret"))
+}
+
+/// A deck printed through the system preview: one slide to a page, in the slide's shape.
+@Test @MainActor func presentationsBecomeOneSlideToAPage() async throws {
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let deck = folder.appendingPathComponent("deck.pptx")
+    try PPTXFormat.write(RichDocument(blocks: [
+        .heading(level: 1, content: [.text("Pierwszy slajd")]), .pageBreak,
+        .heading(level: 1, content: [.text("Drugi slajd")]), .pageBreak,
+        .heading(level: 1, content: [.text("Trzeci slajd")]),
+    ]), to: deck)
+
+    let pdf = try #require(PDFDocument(url: try await Converter.run(.convert(.pdf), on: deck).output))
+    #expect(pdf.pageCount == 3)
+    for index in 0..<pdf.pageCount {
+        let box = try #require(pdf.page(at: index)).bounds(for: .mediaBox)
+        #expect(box.width > box.height, "page \(index + 1) is \(box.size)")
+    }
+    #expect(pdf.page(at: 2)?.string?.contains("Trzeci slajd") == true)
+}
+
+/// Slide apps draw stored pixels and ignore the EXIF orientation, so the photo is turned upright first.
+@Test @MainActor func aTurnedPhotoGoesOnASlideUpright() async throws {
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let photo = folder.appendingPathComponent("photo.jpg")
+    let context = try #require(CGContext(
+        data: nil, width: 64, height: 48, bitsPerComponent: 8, bytesPerRow: 0,
+        space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    ))
+    context.setFillColor(CGColor(red: 0.2, green: 0.4, blue: 0.8, alpha: 1))
+    context.fill(CGRect(x: 0, y: 0, width: 64, height: 48))
+    let destination = try #require(CGImageDestinationCreateWithURL(photo as CFURL, UTType.jpeg.identifier as CFString, 1, nil))
+    CGImageDestinationAddImage(destination, try #require(context.makeImage()), [kCGImagePropertyOrientation: 6] as CFDictionary)
+    #expect(CGImageDestinationFinalize(destination))
+
+    let deck = try await Converter.run(.convert(.pptx), on: photo).output
+    let images = try PPTXFormat.read(deck).blocks.compactMap { block -> ImageAsset? in
+        if case .image(let image) = block { return image }
+        return nil
+    }
+    let image = try #require(images.first)
+    let source = try #require(CGImageSourceCreateWithData(image.data as CFData, nil))
+    let properties = try #require(CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any])
+    #expect(properties[kCGImagePropertyPixelWidth] as? Int == 48)
+    #expect(properties[kCGImagePropertyPixelHeight] as? Int == 64)
+    #expect((properties[kCGImagePropertyOrientation] as? Int ?? 1) == 1)
 }
 
 @Test @MainActor func removingMetadataReachesDocumentsAndTheirPDFs() async throws {

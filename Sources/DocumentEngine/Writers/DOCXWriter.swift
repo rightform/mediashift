@@ -114,13 +114,22 @@ public enum DOCXWriter {
         }
 
         private mutating func tableXML(_ table: ConversionCore.Table) -> String {
-            let columns = table.rows.map { $0.reduce(0) { $0 + $1.columnSpan } }.max() ?? 0
-            guard columns > 0 else { return "" }
-            let width = 9026 / columns
+            // A table with many columns gets smaller text, as it does in HTML and PDF.
+            let (style, characterWidth) = switch TableFit.density(of: table) {
+            case nil: ("TableGrid", 110)
+            case "dense": ("TableGridDense", 95)
+            default: ("TableGridDenser", 80)
+            }
+            // The text width of an A4 page with 2.54 cm margins, and an average Calibri character, in twips.
+            let widths = TableFit.columnWidths(of: table, total: 9026, characterWidth: characterWidth)
+            guard !widths.isEmpty else { return "" }
+            func width(from column: Int, span: Int) -> Int {
+                widths[min(column, widths.count - 1)..<min(column + span, widths.count)].reduce(0, +)
+            }
             var xml = """
-                <w:tbl><w:tblPr><w:tblStyle w:val="TableGrid"/><w:tblW w:w="5000" w:type="pct"/><w:tblLook w:val="04A0" w:firstRow="1"/></w:tblPr>
+                <w:tbl><w:tblPr><w:tblStyle w:val="\(style)"/><w:tblW w:w="5000" w:type="pct"/><w:tblLook w:val="04A0" w:firstRow="1"/></w:tblPr>
                 """
-            xml += "<w:tblGrid>" + String(repeating: "<w:gridCol w:w=\"\(width)\"/>", count: columns) + "</w:tblGrid>"
+            xml += "<w:tblGrid>" + widths.map { "<w:gridCol w:w=\"\($0)\"/>" }.joined() + "</w:tblGrid>"
             // Word marks a vertical merge with a placeholder cell in every row it spans.
             var openMerges: [Int: (remaining: Int, span: Int)] = [:]
             for (index, row) in table.rows.enumerated() {
@@ -131,7 +140,7 @@ public enum DOCXWriter {
 
                 func emitOpenMerges(_ xml: inout String) {
                     while let merge = openMerges[column], merge.remaining > 0 {
-                        xml += "<w:tc><w:tcPr><w:tcW w:w=\"\(width * merge.span)\" w:type=\"dxa\"/>"
+                        xml += "<w:tc><w:tcPr><w:tcW w:w=\"\(width(from: column, span: merge.span))\" w:type=\"dxa\"/>"
                         if merge.span > 1 { xml += "<w:gridSpan w:val=\"\(merge.span)\"/>" }
                         xml += "<w:vMerge/></w:tcPr><w:p/></w:tc>"
                         openMerges[column] = merge.remaining > 1 ? (merge.remaining - 1, merge.span) : nil
@@ -141,7 +150,7 @@ public enum DOCXWriter {
 
                 emitOpenMerges(&xml)
                 while let cell = cells.popFirst() {
-                    var properties = "<w:tcW w:w=\"\(width * cell.columnSpan)\" w:type=\"dxa\"/>"
+                    var properties = "<w:tcW w:w=\"\(width(from: column, span: cell.columnSpan))\" w:type=\"dxa\"/>"
                     if cell.columnSpan > 1 { properties += "<w:gridSpan w:val=\"\(cell.columnSpan)\"/>" }
                     if cell.rowSpan > 1 {
                         properties += "<w:vMerge w:val=\"restart\"/>"
@@ -321,7 +330,7 @@ public enum DOCXWriter {
         }
         return """
             <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-            <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri" w:eastAsia="Calibri"/><w:sz w:val="22"/><w:lang w:val="en-US"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="140" w:line="276" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style>\(heading(1, size: 40))\(heading(2, size: 32))\(heading(3, size: 26))\(heading(4, size: 24))\(heading(5, size: 22))\(heading(6, size: 22))<w:style w:type="paragraph" w:styleId="ListParagraph"><w:name w:val="List Paragraph"/><w:basedOn w:val="Normal"/><w:qFormat/><w:pPr><w:spacing w:after="60"/></w:pPr></w:style><w:style w:type="paragraph" w:styleId="Quote"><w:name w:val="Quote"/><w:basedOn w:val="Normal"/><w:qFormat/><w:pPr><w:ind w:left="567"/></w:pPr><w:rPr><w:i/></w:rPr></w:style><w:style w:type="paragraph" w:styleId="Code"><w:name w:val="Code"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr><w:rPr><w:rFonts w:ascii="Menlo" w:hAnsi="Menlo" w:cs="Menlo"/><w:sz w:val="19"/></w:rPr></w:style><w:style w:type="table" w:default="1" w:styleId="TableNormal"><w:name w:val="Normal Table"/><w:tblPr><w:tblInd w:w="0" w:type="dxa"/><w:tblCellMar><w:top w:w="0" w:type="dxa"/><w:left w:w="108" w:type="dxa"/><w:bottom w:w="0" w:type="dxa"/><w:right w:w="108" w:type="dxa"/></w:tblCellMar></w:tblPr></w:style><w:style w:type="table" w:styleId="TableGrid"><w:name w:val="Table Grid"/><w:basedOn w:val="TableNormal"/><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr><w:tblPr><w:tblBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="C8C8CC"/><w:left w:val="single" w:sz="4" w:space="0" w:color="C8C8CC"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="C8C8CC"/><w:right w:val="single" w:sz="4" w:space="0" w:color="C8C8CC"/><w:insideH w:val="single" w:sz="4" w:space="0" w:color="C8C8CC"/><w:insideV w:val="single" w:sz="4" w:space="0" w:color="C8C8CC"/></w:tblBorders></w:tblPr></w:style></w:styles>
+            <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri" w:eastAsia="Calibri"/><w:sz w:val="22"/><w:lang w:val="en-US"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="140" w:line="276" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style>\(heading(1, size: 40))\(heading(2, size: 32))\(heading(3, size: 26))\(heading(4, size: 24))\(heading(5, size: 22))\(heading(6, size: 22))<w:style w:type="paragraph" w:styleId="ListParagraph"><w:name w:val="List Paragraph"/><w:basedOn w:val="Normal"/><w:qFormat/><w:pPr><w:spacing w:after="60"/></w:pPr></w:style><w:style w:type="paragraph" w:styleId="Quote"><w:name w:val="Quote"/><w:basedOn w:val="Normal"/><w:qFormat/><w:pPr><w:ind w:left="567"/></w:pPr><w:rPr><w:i/></w:rPr></w:style><w:style w:type="paragraph" w:styleId="Code"><w:name w:val="Code"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr><w:rPr><w:rFonts w:ascii="Menlo" w:hAnsi="Menlo" w:cs="Menlo"/><w:sz w:val="19"/></w:rPr></w:style><w:style w:type="table" w:default="1" w:styleId="TableNormal"><w:name w:val="Normal Table"/><w:tblPr><w:tblInd w:w="0" w:type="dxa"/><w:tblCellMar><w:top w:w="0" w:type="dxa"/><w:left w:w="108" w:type="dxa"/><w:bottom w:w="0" w:type="dxa"/><w:right w:w="108" w:type="dxa"/></w:tblCellMar></w:tblPr></w:style><w:style w:type="table" w:styleId="TableGrid"><w:name w:val="Table Grid"/><w:basedOn w:val="TableNormal"/><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr><w:tblPr><w:tblBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="C8C8CC"/><w:left w:val="single" w:sz="4" w:space="0" w:color="C8C8CC"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="C8C8CC"/><w:right w:val="single" w:sz="4" w:space="0" w:color="C8C8CC"/><w:insideH w:val="single" w:sz="4" w:space="0" w:color="C8C8CC"/><w:insideV w:val="single" w:sz="4" w:space="0" w:color="C8C8CC"/></w:tblBorders></w:tblPr></w:style><w:style w:type="table" w:styleId="TableGridDense"><w:name w:val="Table Grid Dense"/><w:basedOn w:val="TableGrid"/><w:rPr><w:sz w:val="19"/></w:rPr></w:style><w:style w:type="table" w:styleId="TableGridDenser"><w:name w:val="Table Grid Denser"/><w:basedOn w:val="TableGrid"/><w:rPr><w:sz w:val="16"/></w:rPr></w:style></w:styles>
             """
     }()
 }

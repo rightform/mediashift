@@ -44,7 +44,13 @@ while let argument = arguments.popFirst() {
         listOnly = true
     case "--out":
         guard let value = arguments.popFirst() else { fail(usage) }
-        options.outputDirectory = URL(fileURLWithPath: value, isDirectory: true)
+        let folder = URL(fileURLWithPath: value, isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        } catch {
+            fail("The folder \(value) could not be created.")
+        }
+        options.outputDirectory = folder
     case "--help", "-h":
         print(usage)
         exit(0)

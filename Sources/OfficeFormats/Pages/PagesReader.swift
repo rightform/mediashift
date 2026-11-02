@@ -11,7 +11,7 @@ struct PagesReader {
     }
 
     func read() throws -> RichDocument {
-        let package = try openPackage()
+        let package = try IWAPackage.open(url, formatName: "Pages")
         let names = package.index.partNames.filter { $0.hasPrefix("Index/") && $0.hasSuffix(".iwa") }
         if package.source.contains(".iwph") || package.index.contains(".iwph") {
             throw ConversionError("This Pages document is password protected.")
@@ -48,26 +48,6 @@ struct PagesReader {
             throw ConversionError("This Pages document is damaged and no text could be recovered.")
         }
         return RichDocument(blocks: text.map { .paragraph(content: [.text($0)]) })
-    }
-
-    // MARK: Packages
-
-    /// A `.pages` is a ZIP, or a folder holding `Index/` or `Index.zip`.
-    private func openPackage() throws -> (source: PartSource, index: PartSource) {
-        var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) else {
-            throw ConversionError("The file could not be found.")
-        }
-        guard isDirectory.boolValue else {
-            let zip = try ZipPackage(url: url, formatName: "Pages")
-            return (zip, zip)
-        }
-        let folder = try DirectoryPackage(url: url)
-        if folder.contains("Index.zip") {
-            let index = try ZipPackage(url: url.appendingPathComponent("Index.zip"), formatName: "Pages")
-            return (folder, index)
-        }
-        return (folder, folder)
     }
 
     // MARK: Last resort
